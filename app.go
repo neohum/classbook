@@ -36,17 +36,29 @@ func (a *App) Greet(name string) string {
 
 // LaunchPenTool launches the external edulinker pen executable
 func (a *App) LaunchPenTool() error {
-	penPath := `d:\works\edulinker-pen-go\build\bin\edulinker-pen-go.exe`
+	possiblePaths := []string{
+		filepath.Join(os.Getenv("ProgramFiles"), "edulinker-pen", "edulinker-pen.exe"),
+		filepath.Join(os.Getenv("ProgramFiles(x86)"), "edulinker-pen", "edulinker-pen.exe"),
+		filepath.Join(os.Getenv("LOCALAPPDATA"), "edulinker-pen", "edulinker-pen.exe"),
+		"edulinker-pen.exe", // Fallback to PATH
+	}
 
-	// Check if the file exists
-	if _, err := os.Stat(penPath); os.IsNotExist(err) {
-		return fmt.Errorf("pen tool executable not found at: %s", penPath)
+	var penPath string
+	for _, p := range possiblePaths {
+		if _, err := os.Stat(p); err == nil {
+			penPath = p
+			break
+		}
+	}
+
+	if penPath == "" {
+		return fmt.Errorf("pen tool executable not found")
 	}
 
 	cmd := exec.Command(penPath)
-
-	// Set the working directory to the executable's directory
-	cmd.Dir = filepath.Dir(penPath)
+	if filepath.IsAbs(penPath) {
+		cmd.Dir = filepath.Dir(penPath)
+	}
 
 	// Start the command in the background
 	err := cmd.Start()

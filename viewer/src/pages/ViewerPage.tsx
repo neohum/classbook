@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X } from 'lucide-react';
-import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit } from '../../wailsjs/runtime/runtime';
+import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { LaunchPenTool } from '../../wailsjs/go/main/App';
 
 function PageRenderer({ bookId, pageNumber, scale }: { bookId: string, pageNumber: number, scale: number }) {
@@ -62,7 +62,9 @@ export default function ViewerPage() {
             await LaunchPenTool();
         } catch (err) {
             console.error("Failed to launch pen tool:", err);
-            // Optionally, we could show a toast or alert here to the user
+            if (window.confirm("판서도구가 설치되어 있지 않습니다. 다운로드 페이지로 이동하시겠습니까?")) {
+                BrowserOpenURL("https://github.com/neohum/edulinker_pen_go/releases/download/v0.1.7/edulinker-pen-amd64-installer.exe");
+            }
         }
     };
 
