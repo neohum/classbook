@@ -1,0 +1,5 @@
+
+[30;101m[30;101m  ERROR  [0m[0m [91m[91mError: flag provided but not defined: -windows[0m[0m
+[30;101m[30;101m         [0m[0m [91m[91mSee 'Wails build --help' for usage[0m[0m
+[31;107m[31;107m ?? [0m[0m [92m[92mIf Wails is useful to you or your company, please consider sponsoring the project:[0m[0m
+https://github.com/sponsors/leaanthony

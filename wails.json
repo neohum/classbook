@@ -7,6 +7,12 @@
     "frontend:build": "npm run build",
     "frontend:dev:watcher": "npm run dev",
     "frontend:dev:serverUrl": "auto",
+    "info": {
+        "companyName": "neohum",
+        "productName": "Classbook",
+        "productVersion": "1.1.0",
+        "copyright": "Copyright 2026 neohum"
+    },
     "author": {
         "name": "developer",
         "email": "developer@example.com"

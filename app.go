@@ -5,13 +5,20 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall" // Added syscall import
 
+	// Added unsafe import
+	"github.com/hashicorp/go-version"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+const AppVersion = "1.1.0"
 
 // App struct
 type App struct {
@@ -27,47 +34,146 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	go a.CheckForUpdate()
+}
+
+type GitHubRelease struct {
+	TagName string `json:"tag_name"`
+	Assets  []struct {
+		Name               string `json:"name"`
+		BrowserDownloadUrl string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+func (a *App) CheckForUpdate() {
+	resp, err := http.Get("https://api.github.com/repos/neohum/classbook/releases/latest")
+	if err != nil {
+		fmt.Println("Error checking for update:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("GitHub API responded with status:", resp.StatusCode)
+		return
+	}
+
+	var release GitHubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		fmt.Println("Error decoding release JSON:", err)
+		return
+	}
+
+	latestVersionStr := strings.TrimPrefix(release.TagName, "v")
+	currentVersionStr := strings.TrimPrefix(AppVersion, "v")
+
+	latestVer, errStr1 := version.NewVersion(latestVersionStr)
+	currentVer, errStr2 := version.NewVersion(currentVersionStr)
+
+	if errStr1 != nil || errStr2 != nil {
+		fmt.Println("Error parsing versions:", errStr1, errStr2)
+		return
+	}
+
+	if latestVer.GreaterThan(currentVer) {
+		// New version available!
+		// Look for the correct asset (the setup file)
+		var downloadUrl string
+		for _, asset := range release.Assets {
+			// e.g. classbook-setup-v1.0.0.exe (we will change the NSIS outname to match)
+			if strings.HasSuffix(asset.Name, ".exe") {
+				downloadUrl = asset.BrowserDownloadUrl
+				break
+			}
+		}
+
+		if downloadUrl != "" {
+			// Prompt the user
+			res, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+				Type:          runtime.QuestionDialog,
+				Title:         "업데이트 알림",
+				Message:       fmt.Sprintf("새로운 버전(%s)이 있습니다. 지금 업데이트 하시겠습니까?", release.TagName),
+				DefaultButton: "예",
+				CancelButton:  "아니오",
+			})
+			if err == nil && res == "Yes" {
+				a.DownloadAndInstallUpdate(downloadUrl, release.TagName)
+			}
+		}
+	}
+}
+
+func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
+	// Show a small popup that it's downloading
+	// A simple indeteriminate dialog or just log... there's no native progress dialog in Wails,
+	// so we simply fetch it and launch it.
+
+	tempDir := os.TempDir()
+	installerPath := filepath.Join(tempDir, fmt.Sprintf("classbook-setup-%s.exe", tagName))
+
+	out, err := os.Create(installerPath)
+	if err != nil {
+		fmt.Println("Failed to create temp installer file:", err)
+		return
+	}
+	defer out.Close()
+
+	resp, err := http.Get(downloadUrl)
+	if err != nil {
+		fmt.Println("Failed to download installer:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		fmt.Println("Failed to save installer:", err)
+		return
+	}
+
+	out.Close() // Ensure it's closed before executing
+
+	// Launch the installer
+	cmd := exec.Command(installerPath)
+	err = cmd.Start()
+	if err != nil {
+		fmt.Println("Failed to start installer:", err)
+		return
+	}
+
+	// Exit the current application so the installer can overwrite files
+	os.Exit(0)
+}
+
+// GetAppVersion returns the current version string
+func (a *App) GetAppVersion() string {
+	return AppVersion
+}
+
+var (
+	user32                  = syscall.NewLazyDLL("user32.dll")
+	procReleaseCapture      = user32.NewProc("ReleaseCapture")
+	procSendMessageW        = user32.NewProc("SendMessageW")
+	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
+)
+
+const (
+	WM_NCLBUTTONDOWN = 0x00A1
+	HTCAPTION        = 2
+)
+
+// StartDrag initiates the native window drag using Windows APIs
+func (a *App) StartDrag() {
+	hwnd, _, _ := procGetForegroundWindow.Call()
+	if hwnd != 0 {
+		procReleaseCapture.Call()
+		procSendMessageW.Call(hwnd, uintptr(WM_NCLBUTTONDOWN), uintptr(HTCAPTION), 0)
+	}
 }
 
 // Greet returns a greeting for the given name
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
-}
-
-// LaunchPenTool launches the external edulinker pen executable
-func (a *App) LaunchPenTool() error {
-	possiblePaths := []string{
-		filepath.Join(os.Getenv("ProgramFiles"), "edulinker-pen", "edulinker-pen.exe"),
-		filepath.Join(os.Getenv("ProgramFiles(x86)"), "edulinker-pen", "edulinker-pen.exe"),
-		filepath.Join(os.Getenv("LOCALAPPDATA"), "edulinker-pen", "edulinker-pen.exe"),
-		"edulinker-pen.exe", // Fallback to PATH
-	}
-
-	var penPath string
-	for _, p := range possiblePaths {
-		if _, err := os.Stat(p); err == nil {
-			penPath = p
-			break
-		}
-	}
-
-	if penPath == "" {
-		return fmt.Errorf("pen tool executable not found")
-	}
-
-	cmd := exec.Command(penPath)
-	if filepath.IsAbs(penPath) {
-		cmd.Dir = filepath.Dir(penPath)
-	}
-
-	// Start the command in the background
-	err := cmd.Start()
-	if err != nil {
-		return fmt.Errorf("failed to start pen tool: %w", err)
-	}
-
-	// We intentionally do not wait for the command to finish so we don't block
-	return nil
 }
 
 // Textbook represents a book available in the viewer

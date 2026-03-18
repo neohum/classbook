@@ -2,7 +2,10 @@ module classbook
 
 go 1.25.0
 
-require github.com/wailsapp/wails/v2 v2.11.0
+require (
+	github.com/hashicorp/go-version v1.8.0
+	github.com/wailsapp/wails/v2 v2.11.0
+)
 
 require (
 	github.com/bep/debounce v1.2.1 // indirect

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X } from 'lucide-react';
-import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, BrowserOpenURL } from '../../wailsjs/runtime/runtime';
-import { LaunchPenTool } from '../../wailsjs/go/main/App';
+import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2 } from 'lucide-react';
+import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit } from '../../wailsjs/runtime/runtime';
+import { StartDrag } from '../../wailsjs/go/main/App';
 
 function PageRenderer({ bookId, pageNumber, scale }: { bookId: string, pageNumber: number, scale: number }) {
     const [isRendered, setIsRendered] = useState(false);
@@ -57,16 +57,116 @@ export default function ViewerPage() {
     const scale = 1.0;
     const [isFullscreen, setIsFullscreen] = useState(false);
 
-    const handleLaunchPen = async () => {
-        try {
-            await LaunchPenTool();
-        } catch (err) {
-            console.error("Failed to launch pen tool:", err);
-            if (window.confirm("판서도구가 설치되어 있지 않습니다. 다운로드 페이지로 이동하시겠습니까?")) {
-                BrowserOpenURL("https://github.com/neohum/edulinker_pen_go/releases/download/v0.1.7/edulinker-pen-amd64-installer.exe");
+    // Drawing State
+    const [isDrawingMode, setIsDrawingMode] = useState(false);
+    const canvasRef = React.useRef<HTMLCanvasElement>(null);
+    const [isDrawing, setIsDrawing] = useState(false);
+    const [color, setColor] = useState('#ef4444'); // Default Red
+    const [lineWidth, setLineWidth] = useState(4);
+    const [isEraser, setIsEraser] = useState(false);
+
+    const handleHeaderPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+        // Prevent drag if touching a button
+        const target = e.target as HTMLElement;
+        if (target.closest('button') || target.closest('input') || target.closest('form')) {
+            return;
+        }
+
+        // Native Windows drag triggered by Go
+        StartDrag();
+    };
+
+    const toggleDrawingMode = () => {
+        setIsDrawingMode(!isDrawingMode);
+    };
+    const clearCanvas = () => {
+        const canvas = canvasRef.current;
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
         }
     };
+
+    const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+        if (!isDrawingMode) return;
+        e.preventDefault();
+        setIsDrawing(true);
+        const canvas = canvasRef.current;
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.beginPath();
+                const { offsetX, offsetY } = getCoordinates(e, canvas);
+                ctx.moveTo(offsetX, offsetY);
+                ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : color;
+                ctx.lineWidth = isEraser ? 20 : lineWidth;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+            }
+        }
+    };
+
+    const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+        if (!isDrawing || !isDrawingMode) return;
+        e.preventDefault();
+        const canvas = canvasRef.current;
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                const { offsetX, offsetY } = getCoordinates(e, canvas);
+                ctx.lineTo(offsetX, offsetY);
+                ctx.stroke();
+            }
+        }
+    };
+
+    const stopDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+        if (!isDrawingMode) return;
+        e.preventDefault();
+        setIsDrawing(false);
+    };
+
+    const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement) => {
+        const rect = canvas.getBoundingClientRect();
+        if ('touches' in e) {
+            return {
+                offsetX: e.touches[0].clientX - rect.left,
+                offsetY: e.touches[0].clientY - rect.top
+            };
+        }
+        return {
+            offsetX: e.clientX - rect.left,
+            offsetY: e.clientY - rect.top
+        };
+    };
+
+    // Resize canvas to match window
+    useEffect(() => {
+        const resizeCanvas = () => {
+            const canvas = canvasRef.current;
+            if (canvas) {
+                // Get actual display size
+                const rect = canvas.getBoundingClientRect();
+
+                // Set actual internal dimensions to match display dimensions
+                // This prevents pixel stretching or coordinate misalignment
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+            }
+        };
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Also call resize when drawing mode toggles in case layout shifted
+        if (isDrawingMode) {
+            setTimeout(resizeCanvas, 50);
+        }
+
+        return () => window.removeEventListener('resize', resizeCanvas);
+    }, [isDrawingMode]);
 
     const toggleFullscreen = async () => {
         try {
@@ -186,18 +286,21 @@ export default function ViewerPage() {
 
     return (
         <div className="h-screen w-screen overflow-hidden bg-slate-950 text-slate-200 flex flex-col font-sans">
-            {/* Top Navigation - Added data-wails-drag for Frameless window moving */}
-            <header data-wails-drag className="h-16 flex-shrink-0 border-b border-slate-800 flex items-center justify-between px-4 sm:px-6 bg-slate-900/80 backdrop-blur-md z-50">
+            {/* Top Navigation - Custom Title Bar Dragging */}
+            <header
+                onPointerDown={handleHeaderPointerDown}
+                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                className="h-16 flex-shrink-0 border-b border-slate-800 flex items-center justify-between px-4 sm:px-6 bg-slate-900/80 backdrop-blur-md z-50 touch-none select-none cursor-move"
+            >
                 <button
                     onClick={goBack}
-                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                    className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+                    className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
                 >
                     <Home className="w-5 h-5" />
                     <span className="font-medium hidden sm:inline">목록으로</span>
                 </button>
 
-                <div className="flex items-center gap-4 sm:gap-6" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                <div className="flex items-center gap-4 sm:gap-6">
                     <div className="font-semibold text-white tracking-wide text-base sm:text-lg">
                         {bookId}
                     </div>
@@ -221,10 +324,10 @@ export default function ViewerPage() {
 
                     {/* Pen Tool Launch */}
                     <button
-                        onClick={handleLaunchPen}
-                        className="p-1.5 sm:p-2 bg-slate-800 text-slate-400 hover:text-white rounded-full border border-slate-700 hover:bg-slate-700 transition-colors"
-                        title="판서 도구 열기"
-                        aria-label="판서 도구 열기"
+                        onClick={toggleDrawingMode}
+                        className={`p-1.5 sm:p-2 rounded-full border transition-colors ${isDrawingMode ? 'bg-violet-600 border-violet-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700'}`}
+                        title="판서 모드 토글"
+                        aria-label="판서 모드 토글"
                     >
                         <PenTool className="w-4 h-4" />
                     </button>
@@ -255,15 +358,40 @@ export default function ViewerPage() {
             </header>
 
             <main className="flex-1 w-full relative overflow-hidden flex items-center justify-center bg-slate-900">
-                {/* Previous Button */}
-                <button
-                    onClick={goToPrevPage}
-                    disabled={currentPage <= 1}
-                    className="absolute left-2 sm:left-6 z-10 w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-violet-600/80 backdrop-blur disabled:opacity-0 disabled:pointer-events-none text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10"
-                    aria-label="이전 페이지"
-                >
-                    <ChevronLeft className="w-8 h-8 -ml-1" />
-                </button>
+                {/* Left Side Controls */}
+                <div className="absolute left-2 sm:left-6 z-50 flex flex-col gap-3">
+                    <button
+                        onClick={goToPrevPage}
+                        disabled={currentPage <= 1}
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-violet-600/80 backdrop-blur disabled:opacity-0 disabled:pointer-events-none text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
+                        aria-label="이전 페이지"
+                    >
+                        <ChevronLeft className="w-8 h-8 -ml-1" />
+                    </button>
+
+                    {/* Additional Left Controls */}
+                    <button
+                        onClick={toggleDrawingMode}
+                        className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto ${isDrawingMode ? 'bg-violet-600/90 text-white' : 'bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                        title="판서 모드 토글"
+                    >
+                        <PenTool className="w-6 h-6" />
+                    </button>
+                    <button
+                        onClick={toggleFullscreen}
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
+                        title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
+                    >
+                        {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
+                    </button>
+                    <button
+                        onClick={Quit}
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-red-900/80 text-slate-300 hover:text-red-400 rounded-full flex items-center justify-center transition-all shadow-xl border border-red-500/20 relative z-50 pointer-events-auto mt-2"
+                        title="프로그램 종료"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
 
                 {/* Image Spread */}
                 <div className="flex items-center justify-center h-full relative z-0">
@@ -273,16 +401,87 @@ export default function ViewerPage() {
                     )}
                 </div>
 
-                {/* Next Button */}
-                <button
-                    onClick={goToNextPage}
-                    disabled={rightPage === null || rightPage >= numPages}
-                    className="absolute right-2 sm:right-6 z-10 w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-violet-600/80 backdrop-blur disabled:opacity-0 disabled:pointer-events-none text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10"
-                    aria-label="다음 페이지"
-                >
-                    <ChevronRight className="w-8 h-8 -mr-1" />
-                </button>
+                {/* Right Side Controls */}
+                <div className="absolute right-2 sm:right-6 z-50 flex flex-col gap-3">
+                    <button
+                        onClick={goToNextPage}
+                        disabled={rightPage === null || rightPage >= numPages}
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-violet-600/80 backdrop-blur disabled:opacity-0 disabled:pointer-events-none text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
+                        aria-label="다음 페이지"
+                    >
+                        <ChevronRight className="w-8 h-8 -mr-1" />
+                    </button>
+
+                    {/* Additional Right Controls */}
+                    <button
+                        onClick={toggleDrawingMode}
+                        className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto ${isDrawingMode ? 'bg-violet-600/90 text-white' : 'bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                        title="판서 모드 토글"
+                    >
+                        <PenTool className="w-6 h-6" />
+                    </button>
+                    <button
+                        onClick={toggleFullscreen}
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
+                        title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
+                    >
+                        {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
+                    </button>
+                    <button
+                        onClick={Quit}
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-red-900/80 text-slate-300 hover:text-red-400 rounded-full flex items-center justify-center transition-all shadow-xl border border-red-500/20 relative z-50 pointer-events-auto mt-2"
+                        title="프로그램 종료"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
             </main>
+
+            {/* Drawing Canvas Overlay */}
+            <canvas
+                ref={canvasRef}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+                onTouchStart={startDrawing}
+                onTouchMove={draw}
+                onTouchEnd={stopDrawing}
+                onTouchCancel={stopDrawing}
+                className={`absolute inset-0 w-full h-full z-40 touch-none ${isDrawingMode ? 'pointer-events-auto cursor-crosshair' : 'pointer-events-none'}`}
+                style={{ display: isDrawingMode ? 'block' : 'none' }}
+            />
+
+            {/* Floating Drawing Toolbar */}
+            {isDrawingMode && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-800/90 backdrop-blur border border-slate-600 rounded-full py-2 px-4 shadow-xl pointer-events-auto">
+                    {/* Colors */}
+                    <button onClick={() => { setColor('#ef4444'); setIsEraser(false); }} className={`w-6 h-6 rounded-full bg-red-500 border-2 ${color === '#ef4444' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="빨강" />
+                    <button onClick={() => { setColor('#3b82f6'); setIsEraser(false); }} className={`w-6 h-6 rounded-full bg-blue-500 border-2 ${color === '#3b82f6' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="파랑" />
+                    <button onClick={() => { setColor('#eab308'); setIsEraser(false); setLineWidth(12); }} className={`w-6 h-6 rounded-full bg-yellow-500/50 border-2 ${color === '#eab308' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="형광펜" />
+                    <button onClick={() => { setColor('#000000'); setIsEraser(false); setLineWidth(4); }} className={`w-6 h-6 rounded-full bg-black border-2 ${color === '#000000' && !isEraser ? 'border-white scale-110' : 'border-slate-500'} transition-all`} title="검정" />
+
+                    <div className="w-px h-6 bg-slate-600 mx-2" />
+
+                    {/* Eraser */}
+                    <button
+                        onClick={() => setIsEraser(true)}
+                        className={`p-1.5 rounded-full transition-colors ${isEraser ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`}
+                        title="지우개"
+                    >
+                        <Eraser className="w-5 h-5" />
+                    </button>
+
+                    {/* Clear All */}
+                    <button
+                        onClick={clearCanvas}
+                        className="p-1.5 text-slate-300 hover:text-red-400 hover:bg-slate-700 rounded-full transition-colors ml-1"
+                        title="전체 지우기"
+                    >
+                        <Trash2 className="w-5 h-5" />
+                    </button>
+                </div>
+            )}
 
             {/* Progress Bar */}
             <div className="h-1.5 bg-slate-800 w-full flex-shrink-0 relative">
