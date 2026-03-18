@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #aa3bff;
+  --color-primary-hover: #9b2cee;
+  --color-bg-base: #f8fafc;
+  --color-bg-panel: #ffffff;
+  --font-sans: 'Pretendard', system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+  }
+
+  body {
+    background-color: var(--color-bg-base);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    --wails-draggable: drag;
+    -webkit-app-region: drag;
+  }
+
+  /* Prevent window dragging on interactive elements */
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  img,
+  form,
+  .group,
+  .no-drag,
+  canvas {
+    --wails-draggable: no-drag;
+    -webkit-app-region: no-drag;
+  }
+}
+
+@layer components {
+
+  /* Hide scrollbar for PDF pages container if needed */
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
