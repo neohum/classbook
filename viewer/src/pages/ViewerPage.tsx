@@ -1254,9 +1254,22 @@ export default function ViewerPage() {
                             </div>
 
                             <button
-                                onClick={() => {
-                                    // @ts-ignore
-                                    CheckForUpdate(true);
+                                onClick={async () => {
+                                    try {
+                                        // @ts-ignore
+                                        const status = await CheckForUpdate();
+                                        if (status.hasUpdate) {
+                                            setIsSettingsOpen(false);
+                                            // @ts-ignore
+                                            if (window.runtime) window.runtime.EventsEmit('update-available', status);
+                                        } else if (status.error) {
+                                            alert(status.error);
+                                        } else {
+                                            alert("현재 최신 버전을 사용 중입니다.");
+                                        }
+                                    } catch (e) {
+                                        alert("업데이트 확인 중 오류가 발생했습니다.");
+                                    }
                                 }}
                                 className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white text-lg rounded-2xl transition-all font-semibold shadow-lg"
                             >

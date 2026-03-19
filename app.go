@@ -18,7 +18,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "1.2.0"
+const AppVersion = "1.3.0"
 
 // App struct
 type App struct {
@@ -34,7 +34,12 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	go a.CheckForUpdate(false)
+	go func() {
+		status := a.CheckForUpdate()
+		if status != nil && status.HasUpdate {
+			runtime.EventsEmit(a.ctx, "update-available", status)
+		}
+	}()
 }
 
 type GitHubRelease struct {
@@ -45,37 +50,30 @@ type GitHubRelease struct {
 	} `json:"assets"`
 }
 
-func (a *App) CheckForUpdate(manual bool) {
+type UpdateStatus struct {
+	HasUpdate   bool   `json:"hasUpdate"`
+	LatestVer   string `json:"latestVer"`
+	DownloadUrl string `json:"downloadUrl"`
+	Error       string `json:"error"`
+}
+
+func (a *App) CheckForUpdate() *UpdateStatus {
 	resp, err := http.Get("https://api.github.com/repos/neohum/classbook/releases/latest")
 	if err != nil {
 		fmt.Println("Error checking for update:", err)
-		if manual {
-			runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-				Type:    runtime.ErrorDialog,
-				Title:   "업데이트 확인 실패",
-				Message: "업데이트 서버에 연결할 수 없습니다.\n" + err.Error(),
-			})
-		}
-		return
+		return &UpdateStatus{Error: "업데이트 서버에 연결할 수 없습니다. " + err.Error()}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		fmt.Println("GitHub API responded with status:", resp.StatusCode)
-		if manual {
-			runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-				Type:    runtime.ErrorDialog,
-				Title:   "업데이트 확인 오류",
-				Message: fmt.Sprintf("서버 응답 오류 (상태 코드: %d)", resp.StatusCode),
-			})
-		}
-		return
+		return &UpdateStatus{Error: fmt.Sprintf("서버 응답 오류 (상태 코드: %d)", resp.StatusCode)}
 	}
 
 	var release GitHubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		fmt.Println("Error decoding release JSON:", err)
-		return
+		return &UpdateStatus{Error: "업데이트 정보를 해석하는 데 실패했습니다."}
 	}
 
 	latestVersionStr := strings.TrimPrefix(release.TagName, "v")
@@ -86,15 +84,12 @@ func (a *App) CheckForUpdate(manual bool) {
 
 	if errStr1 != nil || errStr2 != nil {
 		fmt.Println("Error parsing versions:", errStr1, errStr2)
-		return
+		return &UpdateStatus{Error: "버전 정보를 비교하는 중 오류가 발생했습니다."}
 	}
 
 	if latestVer.GreaterThan(currentVer) {
-		// New version available!
-		// Look for the correct asset (the setup file)
 		var downloadUrl string
 		for _, asset := range release.Assets {
-			// e.g. classbook-setup-v1.0.0.exe (we will change the NSIS outname to match)
 			if strings.HasSuffix(asset.Name, ".exe") {
 				downloadUrl = asset.BrowserDownloadUrl
 				break
@@ -102,27 +97,17 @@ func (a *App) CheckForUpdate(manual bool) {
 		}
 
 		if downloadUrl != "" {
-			// Prompt the user
-			res, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-				Type:          runtime.QuestionDialog,
-				Title:         "업데이트 알림",
-				Message:       fmt.Sprintf("새로운 버전(%s)이 있습니다. 지금 업데이트 하시겠습니까?", release.TagName),
-				DefaultButton: "예",
-				CancelButton:  "아니오",
-			})
-			if err == nil && res == "Yes" {
-				a.DownloadAndInstallUpdate(downloadUrl, release.TagName)
+			return &UpdateStatus{
+				HasUpdate:   true,
+				LatestVer:   release.TagName,
+				DownloadUrl: downloadUrl,
 			}
 		}
-	} else {
-		// Up to date
-		if manual {
-			runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-				Type:    runtime.InfoDialog,
-				Title:   "업데이트 안내",
-				Message: "현재 최신 버전을 사용 중입니다.",
-			})
-		}
+	}
+
+	return &UpdateStatus{
+		HasUpdate: false,
+		LatestVer: release.TagName,
 	}
 }
 
