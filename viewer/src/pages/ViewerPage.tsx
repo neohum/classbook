@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen } from 'lucide-react';
-import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit } from '../../wailsjs/runtime/runtime';
+import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen, Minus } from 'lucide-react';
+import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, WindowMinimise } from '../../wailsjs/runtime/runtime';
 import { StartDrag, GetAppVersion, CheckForUpdate } from '../../wailsjs/go/main/App';
 
 interface ScheduleItem {
@@ -185,13 +185,43 @@ function PageRenderer({ bookId, pageNumber, scale }: { bookId: string, pageNumbe
 
 export default function ViewerPage() {
     const { bookId } = useParams<{ bookId: string }>();
-    const navigate = useNavigate();
-
-    const [numPages, setNumPages] = useState(0);
     const [currentPage, setCurrentPage] = useState<number>(1);
+    const [numPages, setNumPages] = useState<number>(0);
     const [inputPage, setInputPage] = useState<string>("1");
-    const [loading, setLoading] = useState(true);
+    const [images, setImages] = useState<string[]>([]);
+    const [loading, setLoading] = useState<boolean>(true);
     const scale = 1.0;
+
+    // Page Offset sync
+    const [pageOffset, setPageOffset] = useState<number>(0);
+
+    useEffect(() => {
+        if (bookId) {
+            const saved = localStorage.getItem(`pageOffset_${bookId}`);
+            if (saved !== null) {
+                setPageOffset(parseInt(saved, 10));
+            } else {
+                setPageOffset(0);
+            }
+        }
+    }, [bookId]);
+
+    const handleOffsetChange = (newPrintedPage: number) => {
+        if (isNaN(newPrintedPage)) return;
+        const newOffset = currentPage - newPrintedPage;
+        setPageOffset(newOffset);
+        if (bookId) {
+            localStorage.setItem(`pageOffset_${bookId}`, newOffset.toString());
+        }
+    };
+
+    const getPrintedPage = (pageIndex: number | null) => {
+        if (pageIndex === null) return null;
+        const printed = pageIndex - pageOffset;
+        return printed <= 0 ? `앞 ${pageIndex}` : printed.toString();
+    };
+
+    const navigate = useNavigate();
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Drawing State
@@ -250,6 +280,7 @@ export default function ViewerPage() {
 
     // Schedule State
     const [schedules, setSchedules] = useState<ScheduleItem[]>(defaultSchedule);
+    const [isScheduleEnabled, setIsScheduleEnabled] = useState(true);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
     const [scheduleAlarmMessage, setScheduleAlarmMessage] = useState("");
     const lastTriggeredMinuteRef = React.useRef("");
@@ -257,12 +288,14 @@ export default function ViewerPage() {
     const isSoundEnabledRef = React.useRef(isSoundEnabled);
     const alarmTypeRef = React.useRef(alarmType);
     const alarmLoopRef = React.useRef(alarmLoop);
+    const isScheduleEnabledRef = React.useRef(isScheduleEnabled);
 
     useEffect(() => {
         isSoundEnabledRef.current = isSoundEnabled;
         alarmTypeRef.current = alarmType;
         alarmLoopRef.current = alarmLoop;
-    }, [isSoundEnabled, alarmType, alarmLoop]);
+        isScheduleEnabledRef.current = isScheduleEnabled;
+    }, [isSoundEnabled, alarmType, alarmLoop, isScheduleEnabled]);
 
     useEffect(() => {
         const checkSchedule = () => {
@@ -272,6 +305,7 @@ export default function ViewerPage() {
             const currentTimeStr = `${h}:${m}`;
 
             if (lastTriggeredMinuteRef.current === currentTimeStr) return;
+            if (!isScheduleEnabledRef.current) return;
 
             for (const item of schedules) {
                 if (item.startTime === currentTimeStr) {
@@ -331,9 +365,23 @@ export default function ViewerPage() {
             if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         }
         return () => {
-            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         };
     }, [isTimerRunning]);
+
+    // Auto-close alarm after 30 seconds if uncanceled
+    useEffect(() => {
+        let timeout: ReturnType<typeof setTimeout>;
+        if (isAlarmRinging) {
+            timeout = setTimeout(() => {
+                setIsAlarmRinging(false);
+                setScheduleAlarmMessage("");
+                stopAllAudio();
+            }, 30000);
+        }
+        return () => {
+            if (timeout) clearTimeout(timeout);
+        };
+    }, [isAlarmRinging]);
 
     const startTimer = (minutes: number) => {
         setTimerSeconds(minutes * 60);
@@ -492,9 +540,19 @@ export default function ViewerPage() {
                         <span className="text-white text-2xl font-bold flex items-center gap-2">
                             <CalendarDays className="w-8 h-8 text-violet-400" /> 시종 시간표 설정
                         </span>
-                        <button onClick={() => setIsScheduleModalOpen(false)} className="text-slate-400 hover:text-white transition-colors p-2 rounded-full hover:bg-slate-700">
-                            <X className="w-6 h-6" />
-                        </button>
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={() => setIsScheduleEnabled(!isScheduleEnabled)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors font-medium border ${isScheduleEnabled ? 'bg-violet-600/20 text-violet-300 border-violet-500/50' : 'bg-slate-800 text-slate-400 border-slate-600 hover:text-white hover:bg-slate-700'}`}
+                                title="시종 알림 켜기/끄기"
+                            >
+                                {isScheduleEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+                                <span>{isScheduleEnabled ? '알림 켜짐' : '알림 꺼짐'}</span>
+                            </button>
+                            <button onClick={() => setIsScheduleModalOpen(false)} className="text-slate-400 hover:text-white transition-colors p-2 rounded-full hover:bg-slate-700">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
                     </div>
 
                     <div className="flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar">
@@ -578,17 +636,32 @@ export default function ViewerPage() {
                     </h2>
                     <div className="flex items-center justify-center gap-6 sm:gap-10 bg-slate-900/50 px-12 py-6 sm:px-24 sm:py-10 rounded-[4rem] border border-slate-700/50">
                         <span className="text-[12vw] sm:text-[16vw] font-bold text-violet-300 leading-none">
-                            {leftPage}
+                            {getPrintedPage(leftPage)}
                         </span>
                         {rightPage && (
                             <>
                                 <span className="text-[12vw] sm:text-[16vw] font-bold text-slate-500 leading-none">/</span>
                                 <span className="text-[12vw] sm:text-[16vw] font-bold text-violet-300 leading-none">
-                                    {rightPage}
+                                    {getPrintedPage(rightPage)}
                                 </span>
                             </>
                         )}
                         <span className="text-[5vw] sm:text-[7vw] font-medium text-slate-400 ml-4 sm:ml-8 mt-auto mb-[2vw] sm:mb-[3vw]">쪽</span>
+                    </div>
+
+                    <div className="mt-8 sm:mt-12 flex flex-col sm:flex-row items-center justify-center gap-4 bg-black/40 px-6 py-4 rounded-3xl border border-slate-700 backdrop-blur-md">
+                        <span className="text-slate-300 text-base sm:text-xl font-medium">현재 화면의 실제 쪽수는?</span>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                className="w-20 sm:w-28 bg-slate-800 border-2 border-slate-600 text-white text-center text-xl sm:text-2xl font-bold rounded-xl py-2 focus:border-violet-500 focus:outline-none transition-colors"
+                                placeholder="쪽수"
+                                value={currentPage - pageOffset}
+                                onChange={(e) => handleOffsetChange(parseInt(e.target.value, 10))}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                            <span className="text-slate-400 text-base sm:text-xl">쪽입니다</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -789,18 +862,22 @@ export default function ViewerPage() {
     const handlePageSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const parsed = parseInt(inputPage, 10);
-        if (!isNaN(parsed) && parsed >= 1 && parsed <= numPages) {
-            setCurrentPage(parsed);
+        if (!isNaN(parsed)) {
+            const physicalPage = parsed + pageOffset;
+            if (physicalPage >= 1 && physicalPage <= numPages) {
+                setCurrentPage(physicalPage);
+            } else {
+                setInputPage((currentPage - pageOffset).toString());
+            }
         } else {
-            // Reset to current if invalid
-            setInputPage(currentPage.toString());
+            setInputPage((currentPage - pageOffset).toString());
         }
     };
 
     // Auto-sync input when currentPage changes programmatically
     useEffect(() => {
-        setInputPage(currentPage.toString());
-    }, [currentPage]);
+        setInputPage((currentPage - pageOffset).toString());
+    }, [currentPage, pageOffset]);
 
     // Initialize and load PDF metadata
     useEffect(() => {
@@ -953,10 +1030,20 @@ export default function ViewerPage() {
                         <PenTool className="w-4 h-4" />
                     </button>
 
+                    {/* Minimize Button */}
+                    <button
+                        onClick={WindowMinimise}
+                        className="p-1.5 sm:p-2 bg-slate-800 text-slate-400 hover:text-white rounded-full border border-slate-700 hover:bg-slate-700 transition-colors ml-2"
+                        title="최소화"
+                        aria-label="최소화"
+                    >
+                        <Minus className="w-4 h-4" />
+                    </button>
+
                     {/* Fullscreen Toggle */}
                     <button
                         onClick={toggleFullscreen}
-                        className="p-1.5 sm:p-2 bg-slate-800 text-slate-400 hover:text-white rounded-full border border-slate-700 hover:bg-slate-700 transition-colors"
+                        className="p-1.5 sm:p-2 bg-slate-800 text-slate-400 hover:text-white rounded-full border border-slate-700 hover:bg-slate-700 transition-colors ml-2"
                         aria-label={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
                     >
                         {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
@@ -1060,8 +1147,15 @@ export default function ViewerPage() {
                         )}
                     </div>
                     <button
+                        onClick={WindowMinimise}
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto mt-auto"
+                        title="최소화"
+                    >
+                        <Minus className="w-6 h-6" />
+                    </button>
+                    <button
                         onClick={toggleFullscreen}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto mt-2"
                         title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
                     >
                         {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
@@ -1143,8 +1237,15 @@ export default function ViewerPage() {
                         )}
                     </div>
                     <button
+                        onClick={WindowMinimise}
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto mt-auto"
+                        title="최소화"
+                    >
+                        <Minus className="w-6 h-6" />
+                    </button>
+                    <button
                         onClick={toggleFullscreen}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
+                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto mt-2"
                         title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
                     >
                         {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
