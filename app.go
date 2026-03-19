@@ -18,7 +18,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "1.1.0"
+const AppVersion = "1.2.0"
 
 // App struct
 type App struct {
@@ -34,7 +34,7 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	go a.CheckForUpdate()
+	go a.CheckForUpdate(false)
 }
 
 type GitHubRelease struct {
@@ -45,16 +45,30 @@ type GitHubRelease struct {
 	} `json:"assets"`
 }
 
-func (a *App) CheckForUpdate() {
+func (a *App) CheckForUpdate(manual bool) {
 	resp, err := http.Get("https://api.github.com/repos/neohum/classbook/releases/latest")
 	if err != nil {
 		fmt.Println("Error checking for update:", err)
+		if manual {
+			runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+				Type:    runtime.ErrorDialog,
+				Title:   "업데이트 확인 실패",
+				Message: "업데이트 서버에 연결할 수 없습니다.\n" + err.Error(),
+			})
+		}
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		fmt.Println("GitHub API responded with status:", resp.StatusCode)
+		if manual {
+			runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+				Type:    runtime.ErrorDialog,
+				Title:   "업데이트 확인 오류",
+				Message: fmt.Sprintf("서버 응답 오류 (상태 코드: %d)", resp.StatusCode),
+			})
+		}
 		return
 	}
 
@@ -99,6 +113,15 @@ func (a *App) CheckForUpdate() {
 			if err == nil && res == "Yes" {
 				a.DownloadAndInstallUpdate(downloadUrl, release.TagName)
 			}
+		}
+	} else {
+		// Up to date
+		if manual {
+			runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+				Type:    runtime.InfoDialog,
+				Title:   "업데이트 안내",
+				Message: "현재 최신 버전을 사용 중입니다.",
+			})
 		}
 	}
 }
