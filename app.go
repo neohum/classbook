@@ -18,7 +18,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "1.4.0"
+const AppVersion = "1.0.0"
 
 // App struct
 type App struct {
@@ -240,6 +240,17 @@ func (a *App) SelectPdfDialog() (string, error) {
 		},
 	})
 	return filename, err
+}
+
+// SelectMultiplePdfsDialog opens a file dialog to pick multiple PDFs. It returns the absolute paths.
+func (a *App) SelectMultiplePdfsDialog() ([]string, error) {
+	filenames, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "교과서 PDF 선택 (여러 개 선택 가능)",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "PDF Files", Pattern: "*.pdf"},
+		},
+	})
+	return filenames, err
 }
 
 // ReadFileBase64 reads a local file and returns its content as a base64 string

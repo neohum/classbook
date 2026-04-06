@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen, BookCopy, ArrowRight, X, Maximize, Minimize, Trash2, Plus, Loader2 } from 'lucide-react';
 import { Quit, WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen } from '../../wailsjs/runtime/runtime';
-import { DeleteBook, SelectPdfDialog, ReadFileBase64, EnsureBookDir, SavePageImage, GetTextbooks } from '../../wailsjs/go/main/App';
+import { DeleteBook, SelectMultiplePdfsDialog, ReadFileBase64, EnsureBookDir, SavePageImage, GetTextbooks, GetAppVersion } from '../../wailsjs/go/main/App';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorkerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
@@ -62,21 +62,24 @@ export default function MainPage() {
 
     const [textbooks, setTextbooks] = useState<any[]>([]);
     const [isConverting, setIsConverting] = useState(false);
-    const [convertProgress, setConvertProgress] = useState({ current: 0, total: 0 });
+    const [convertProgress, setConvertProgress] = useState({ current: 0, total: 0, title: '' });
+    const [appVersion, setAppVersion] = useState<string>('');
 
-    // Load available books on mount
+    // Load initial data on mount
     useEffect(() => {
-        const loadBooks = async () => {
+        const loadInitialData = async () => {
             try {
                 const books = await GetTextbooks();
                 if (books) {
                     setTextbooks(books);
                 }
+                const version = await GetAppVersion();
+                setAppVersion(version);
             } catch (err) {
-                console.error("Failed to load textbooks from backend:", err);
+                console.error("Failed to load initial data:", err);
             }
         };
-        loadBooks();
+        loadInitialData();
     }, []);
 
     const handleDelete = async (e: React.MouseEvent, bookId: string) => {
@@ -123,88 +126,108 @@ export default function MainPage() {
 
     const handleAddBook = async () => {
         try {
-            // 1. Let user pick a PDF
-            const pdfPath = await SelectPdfDialog();
-            if (!pdfPath) return; // User cancelled
-
-            // 2. Ask for a title
-            const defaultTitle = pdfPath.split('\\').pop()?.split('/').pop()?.replace('.pdf', '') || '새 교과서';
-            const title = window.prompt("추가할 교과서의 이름을 입력하세요:", defaultTitle);
-            if (!title) return;
-
-            // Check if title already exists
-            if (textbooks.some(b => b.id === title)) {
-                alert("이미 같은 이름의 교과서가 존재합니다.");
-                return;
-            }
+            // 1. Let user pick multiple PDFs
+            const pdfPaths = await SelectMultiplePdfsDialog();
+            if (!pdfPaths || pdfPaths.length === 0) return; // User cancelled
 
             setIsConverting(true);
-            setConvertProgress({ current: 0, total: 1 });
 
-            // 3. Read File as Base64 from Go Backend
-            const base64Data = await ReadFileBase64(pdfPath);
-            const raw = window.atob(base64Data);
-            const uint8Array = new Uint8Array(raw.length);
-            for (let i = 0; i < raw.length; i++) {
-                uint8Array[i] = raw.charCodeAt(i);
-            }
+            let currentBooks = await GetTextbooks();
+            let addedCount = 0;
 
-            // 4. Load with PDF.js
-            const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-            const pdf = await loadingTask.promise;
-            const numPages = pdf.numPages;
-
-            setConvertProgress({ current: 0, total: numPages });
-
-            // 5. Ensure Book Directory exists
-            await EnsureBookDir(title, numPages);
-
-            // 6. Render each page to canvas -> base64 -> send to Go Backend
-            // We use a relatively high scale (e.g. 2.0 or 1.5) for good image quality
-            const scale = 1.5;
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d', { alpha: false }); // JPEG doesn't need alpha
-
-            for (let i = 1; i <= numPages; i++) {
-                const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale });
-
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-
-                if (ctx) {
-                    // Fill white background just in case
-                    ctx.fillStyle = 'white';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                    const renderContext = {
-                        canvasContext: ctx,
-                        viewport: viewport,
-                    } as any;
-                    await page.render(renderContext).promise;
-
-                    // Extract as high-quality JPEG base64 Data URL
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-
-                    // Send to backend to save as page_{i}.jpg
-                    await SavePageImage(title, i, dataUrl);
+            for (let i = 0; i < pdfPaths.length; i++) {
+                const pdfPath = pdfPaths[i];
+                const baseFilename = pdfPath.split('\\').pop()?.split('/').pop()?.replace('.pdf', '') || '새 교과서';
+                
+                let title = baseFilename;
+                if (pdfPaths.length === 1) {
+                    const promptTitle = window.prompt("추가할 교과서의 이름을 입력하세요:", baseFilename);
+                    if (!promptTitle) continue;
+                    title = promptTitle;
+                } else {
+                    let counter = 1;
+                    const originalTitle = title;
+                    while (currentBooks.some((b: any) => b.id === title)) {
+                        title = `${originalTitle} (${counter})`;
+                        counter++;
+                    }
                 }
 
-                setConvertProgress({ current: i, total: numPages });
+                if (currentBooks.some((b: any) => b.id === title)) {
+                    if (pdfPaths.length === 1) alert("이미 같은 이름의 교과서가 존재합니다.");
+                    continue; // Skip if still duplicated
+                }
+
+                setConvertProgress({ current: 0, total: 1, title });
+
+                // 3. Read File as Base64 from Go Backend
+                const base64Data = await ReadFileBase64(pdfPath);
+                const raw = window.atob(base64Data);
+                const uint8Array = new Uint8Array(raw.length);
+                for (let j = 0; j < raw.length; j++) {
+                    uint8Array[j] = raw.charCodeAt(j);
+                }
+
+                // 4. Load with PDF.js
+                const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+                const pdf = await loadingTask.promise;
+                const numPages = pdf.numPages;
+
+                setConvertProgress({ current: 0, total: numPages, title });
+
+                // 5. Ensure Book Directory exists
+                await EnsureBookDir(title, numPages);
+
+                // 6. Render each page to canvas -> base64 -> send to Go Backend
+                const scale = 1.5;
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d', { alpha: false }); // JPEG doesn't need alpha
+
+                for (let j = 1; j <= numPages; j++) {
+                    const page = await pdf.getPage(j);
+                    const viewport = page.getViewport({ scale });
+
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+
+                    if (ctx) {
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                        const renderContext = {
+                            canvasContext: ctx,
+                            viewport: viewport,
+                        } as any;
+                        await page.render(renderContext).promise;
+
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                        await SavePageImage(title, j, dataUrl);
+                    }
+
+                    setConvertProgress({ current: j, total: numPages, title });
+                }
+
+                currentBooks = await GetTextbooks();
+                addedCount++;
             }
 
             // 7. Refresh book list
-            const updatedBooks = await GetTextbooks();
-            setTextbooks(updatedBooks);
+            setTextbooks(currentBooks);
 
-            alert(`"${title}" 교과서가 성공적으로 추가되었습니다!`);
+            if (addedCount > 0) {
+                if (pdfPaths.length === 1) {
+                    alert(`교과서가 성공적으로 추가되었습니다!`);
+                } else {
+                    alert(`${addedCount}개의 교과서가 성공적으로 추가되었습니다!`);
+                }
+            }
 
         } catch (err: any) {
             console.error("Failed to add book:", err);
             alert(`교과서 추가 중 오류가 발생했습니다: ${err.message || err}`);
         } finally {
             setIsConverting(false);
-            setConvertProgress({ current: 0, total: 0 });
+            setConvertProgress({ current: 0, total: 0, title: '' });
         }
     };
 
@@ -214,8 +237,9 @@ export default function MainPage() {
                 <div className="flex items-center justify-between mb-4">
                     <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="flex items-center gap-3">
                         <BookOpen className="w-10 h-10 text-violet-600" />
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">
+                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 flex items-baseline gap-2">
                             나의 교과서
+                            {appVersion && <span className="text-sm font-medium text-slate-400">v{appVersion}</span>}
                         </h1>
                     </div>
 
@@ -253,7 +277,7 @@ export default function MainPage() {
                         {isConverting ? (
                             <>
                                 <Loader2 className="w-5 h-5 animate-spin" />
-                                <span>변환 중... ({convertProgress.current} / {convertProgress.total})</span>
+                                <span>변환 중... {convertProgress.title && `[${convertProgress.title}] `}({convertProgress.current} / {convertProgress.total})</span>
                             </>
                         ) : (
                             <>
