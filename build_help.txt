@@ -1,0 +1,62 @@
+[0;92mWails CLI[0m [0;31mv2.11.0[0m
+
+Wails build - Builds the application
+Flags:
+
+  -clean
+    	Clean the bin directory before building
+  -compiler string
+    	Use a different go compiler to build, eg go1.15beta1 (default "go")
+  -debug
+    	Builds the application in debug mode
+  -devtools
+    	Enable Devtools in productions, Already enabled in debug mode (-debug)
+  -dryrun
+    	Prints the build command without executing it
+  -f	Force build of application
+  -garbleargs string
+    	Arguments to pass to garble (default "-literals -tiny -seed=random")
+  -help
+    	Get help on the 'wails build' command.
+  -ldflags string
+    	Additional ldflags to pass to the compiler
+  -m	Skip mod tidy before compile
+  -nocolour
+    	Disable colour in output
+  -nopackage
+    	Skips platform specific packaging
+  -nosyncgomod
+    	Don't sync go.mod
+  -nsis
+    	Generate NSIS installer for Windows
+  -o string
+    	Output filename
+  -obfuscated
+    	Code obfuscation of bound Wails methods
+  -platform string
+    	Platform to target. Comma separate multiple platforms (default "windows/amd64")
+  -race
+    	Build with Go's race detector
+  -s	Skips building the frontend
+  -skipbindings
+    	Skips generation of bindings
+  -skipembedcreate
+    	Skips creation of embed files
+  -tags string
+    	Build tags to pass to Go compiler. Must be quoted. Space or comma (but not both) separated
+  -trimpath
+    	Remove all file system paths from the resulting executable
+  -u	Updates go.mod to use the same Wails version as the CLI
+  -upx
+    	Compress final binary with UPX (if installed)
+  -upxflags string
+    	Flags to pass to upx
+  -v int
+    	Verbosity level (0 = quiet, 1 = normal, 2 = verbose) (default 1)
+  -webview2 string
+    	WebView2 installer strategy: download,embed,browser,error (default "download")
+  -windowsconsole
+    	Keep the console when building for Windows
+
+[31;107m[31;107m ♥  [0m[0m [92m[92mIf Wails is useful to you or your company, please consider sponsoring the project:[0m[0m
+https://github.com/sponsors/leaanthony

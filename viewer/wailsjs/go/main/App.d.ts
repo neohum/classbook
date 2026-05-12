@@ -20,6 +20,8 @@ export function ReadFileBase64(arg1:string):Promise<string>;
 
 export function SavePageImage(arg1:string,arg2:number,arg3:string):Promise<void>;
 
+export function SelectMultiplePdfsDialog():Promise<Array<string>>;
+
 export function SelectPdfDialog():Promise<string>;
 
 export function StartDrag():Promise<void>;

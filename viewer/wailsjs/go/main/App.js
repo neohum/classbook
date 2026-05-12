@@ -38,6 +38,10 @@ export function SavePageImage(arg1, arg2, arg3) {
   return window['go']['main']['App']['SavePageImage'](arg1, arg2, arg3);
 }
 
+export function SelectMultiplePdfsDialog() {
+  return window['go']['main']['App']['SelectMultiplePdfsDialog']();
+}
+
 export function SelectPdfDialog() {
   return window['go']['main']['App']['SelectPdfDialog']();
 }
