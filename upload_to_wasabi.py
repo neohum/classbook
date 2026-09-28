@@ -85,7 +85,7 @@ def main():
     print(f"Publishing release {tag_name} to GitHub Releases...")
     
     # Check if release exists
-    chk_release = subprocess.run(["gh", "release", "view", tag_name], capture_output=True, text=True)
+    chk_release = subprocess.run(["gh", "release", "view", tag_name], capture_output=True, text=True, encoding="utf-8", errors="ignore")
     if chk_release.returncode == 0:
         print(f"Updating existing GitHub release {tag_name}...")
         subprocess.run(["gh", "release", "upload", tag_name, local_installer, "--clobber"], check=False)
