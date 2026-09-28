@@ -83,7 +83,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
     
     // Drag & Drop States
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const [dropTarget, setDropTarget] = useState<{ index: number; position: 'before' | 'after' } | null>(null);
 
     // New Time Input Form State
     const [showAddForm, setShowAddForm] = useState(false);
@@ -104,7 +104,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
             setNewStartMsg(`${current.length + 1}교시 수업을 시작합니다.`);
             setShowAddForm(false);
             setDraggedIndex(null);
-            setDragOverIndex(null);
+            setDropTarget(null);
         }
     }, [isOpen]);
 
@@ -220,33 +220,50 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
     const handleDragOver = (e: React.DragEvent, index: number) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        if (dragOverIndex !== index) {
-            setDragOverIndex(index);
+        const rect = e.currentTarget.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const position: 'before' | 'after' = e.clientY < midY ? 'before' : 'after';
+        
+        if (!dropTarget || dropTarget.index !== index || dropTarget.position !== position) {
+            setDropTarget({ index, position });
         }
     };
 
     const handleDrop = (e: React.DragEvent, targetIndex: number) => {
         e.preventDefault();
-        if (draggedIndex === null || draggedIndex === targetIndex) {
+        if (draggedIndex === null || !dropTarget) {
             setDraggedIndex(null);
-            setDragOverIndex(null);
+            setDropTarget(null);
+            return;
+        }
+
+        const { position } = dropTarget;
+        
+        // Don't reorder if dropping in the same position
+        if (draggedIndex === targetIndex) {
+            setDraggedIndex(null);
+            setDropTarget(null);
             return;
         }
 
         setLocalSchedules(prev => {
             const next = [...prev];
             const [moved] = next.splice(draggedIndex, 1);
-            next.splice(targetIndex, 0, moved);
+            let insertIndex = targetIndex + (position === 'after' ? 1 : 0);
+            if (draggedIndex < insertIndex) {
+                insertIndex -= 1;
+            }
+            next.splice(insertIndex, 0, moved);
             return next;
         });
 
         setDraggedIndex(null);
-        setDragOverIndex(null);
+        setDropTarget(null);
     };
 
     const handleDragEnd = () => {
         setDraggedIndex(null);
-        setDragOverIndex(null);
+        setDropTarget(null);
     };
 
     return (
@@ -404,24 +421,26 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                     <div className="space-y-3">
                         {localSchedules.map((schedule, idx) => {
                             const isBeingDragged = draggedIndex === idx;
-                            const isDragOver = dragOverIndex === idx && draggedIndex !== idx;
+                            const showLineBefore = dropTarget?.index === idx && dropTarget?.position === 'before' && draggedIndex !== idx;
+                            const showLineAfter = dropTarget?.index === idx && dropTarget?.position === 'after' && draggedIndex !== idx;
 
                             return (
-                                <div
-                                    key={schedule.id}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, idx)}
-                                    onDragOver={(e) => handleDragOver(e, idx)}
-                                    onDrop={(e) => handleDrop(e, idx)}
-                                    onDragEnd={handleDragEnd}
-                                    className={`bg-slate-800/80 border rounded-2xl p-4 flex flex-col gap-3 transition-all duration-150 ${
-                                        isBeingDragged 
-                                            ? 'opacity-30 scale-[0.98] border-violet-500 ring-2 ring-violet-500/50 bg-slate-900' 
-                                            : isDragOver 
-                                                ? 'border-2 border-violet-400 bg-violet-950/40 scale-[1.01] shadow-lg' 
+                                <React.Fragment key={schedule.id}>
+                                    {showLineBefore && (
+                                        <div className="h-1.5 bg-violet-400 rounded-full shadow-[0_0_12px_rgba(167,139,250,0.9)] my-1.5 transition-all animate-pulse" />
+                                    )}
+                                    <div
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, idx)}
+                                        onDragOver={(e) => handleDragOver(e, idx)}
+                                        onDrop={(e) => handleDrop(e, idx)}
+                                        onDragEnd={handleDragEnd}
+                                        className={`bg-slate-800/80 border rounded-2xl p-4 flex flex-col gap-3 transition-all duration-150 ${
+                                            isBeingDragged 
+                                                ? 'opacity-30 scale-[0.98] border-violet-500 ring-2 ring-violet-500/50 bg-slate-900' 
                                                 : 'border-slate-700/70 hover:border-slate-600'
-                                    }`}
-                                >
+                                        }`}
+                                    >
                                     {/* Top Row: Drag Handle, Number, Name, Times, Reorder Buttons, Delete */}
                                     <div className="flex flex-wrap items-center justify-between gap-3 select-none">
                                         <div className="flex items-center gap-2.5 flex-wrap flex-1">
@@ -549,9 +568,38 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                             />
                                         </div>
                                     </div>
-                                </div>
+                                    </div>
+                                    {showLineAfter && (
+                                        <div className="h-1.5 bg-violet-400 rounded-full shadow-[0_0_12px_rgba(167,139,250,0.9)] my-1.5 transition-all animate-pulse" />
+                                    )}
+                                </React.Fragment>
                             );
                         })}
+
+                        {/* Drop zone to move item to the very bottom */}
+                        {draggedIndex !== null && (
+                            <div
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'move';
+                                    if (localSchedules.length > 0) {
+                                        setDropTarget({ index: localSchedules.length - 1, position: 'after' });
+                                    }
+                                }}
+                                onDrop={(e) => {
+                                    if (localSchedules.length > 0) {
+                                        handleDrop(e, localSchedules.length - 1);
+                                    }
+                                }}
+                                className={`p-4 border-2 border-dashed rounded-2xl flex items-center justify-center transition-all ${
+                                    dropTarget?.index === localSchedules.length - 1 && dropTarget?.position === 'after'
+                                        ? 'border-violet-400 bg-violet-950/50 text-violet-300 scale-[1.01] shadow-lg'
+                                        : 'border-slate-700/60 hover:border-slate-600 text-slate-500'
+                                }`}
+                            >
+                                <span className="text-xs font-bold">이곳에 놓으면 맨 끝 순서로 이동합니다</span>
+                            </div>
+                        )}
                     </div>
                 </div>
 

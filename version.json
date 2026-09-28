@@ -1,9 +1,9 @@
 {
-  "version": "1.2.6",
+  "version": "1.2.7",
   "releaseDate": "2026-09-28",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.6/classbook-setup-v1.2.6.exe",
-  "installerName": "classbook-setup-v1.2.6.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.6.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260928%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260928T062114Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bec8c73d24495e9ee2baf08933eb472f43ad6a348d132591a58996dbe93be1fd",
-  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.6.exe",
-  "notes": "교과서 뷰어 좌우 메뉴를 반투명 블러 플로팅 독 및 반투명 플로팅 버튼으로 개선 (v1.2.6)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.7/classbook-setup-v1.2.7.exe",
+  "installerName": "classbook-setup-v1.2.7.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.7.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260928%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260928T065153Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8cadba90a29cdc69da1330ab74513ab10ae2040dc08245291048203b715ca239",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.7.exe",
+  "notes": "주안 분석 시 요일별(월~금) 교시 정상 배분 수정 및 시종시간 항목 사이 삽입 드래그 앤 드롭 지원 (v1.2.7)"
 }

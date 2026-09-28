@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "교과서 뷰어 좌우 메뉴를 반투명 블러 플로팅 독 및 반투명 플로팅 버튼으로 개선 (v1.2.6)"
+    notes = "주안 분석 시 요일별(월~금) 교시 정상 배분 수정 및 시종시간 항목 사이 삽입 드래그 앤 드롭 지원 (v1.2.7)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

@@ -327,20 +327,153 @@ def process_tables(tables, doc_title):
         "schedule": best_schedule
     }
 
+def parse_period_blocks(paragraphs, available_books):
+    schedule = {day: [] for day in DAY_NAMES}
+    
+    # 1. Find period block boundaries (1~6교시)
+    period_indices = []
+    for idx, p in enumerate(paragraphs):
+        m = re.search(r'\b([1-6])\s*교시', p.strip())
+        if m:
+            period_num = int(m.group(1))
+            period_indices.append((idx, period_num))
+            
+    if not period_indices:
+        return None
+
+    # End markers for the table
+    end_markers = ['준비물', '가정통신', '가정 통신', '알림장', '알림사항', '행사안내', '안내사항', '시종시간', '통신란']
+    table_end_idx = len(paragraphs)
+    for idx in range(period_indices[-1][0] + 1, len(paragraphs)):
+        p = paragraphs[idx].strip()
+        if any(marker in p for marker in end_markers):
+            table_end_idx = idx
+            break
+
+    # Process each period block
+    for i, (start_idx, period_num) in enumerate(period_indices):
+        end_idx = period_indices[i + 1][0] if i + 1 < len(period_indices) else table_end_idx
+        block_paras = [paragraphs[k].strip() for k in range(start_idx + 1, end_idx) if paragraphs[k].strip()]
+        
+        # Filter out time strings like '(09:00~09:40)'
+        clean_paras = []
+        for p in block_paras:
+            if re.match(r'^\(?\d{1,2}:\d{2}\s*[~∼\-]\s*\d{1,2}:\d{2}\)?$', p):
+                continue
+            if re.match(r'^\(?\d{1,2}:\d{2}\s*[~∼\-]?$', p):
+                continue
+            if re.match(r'^\d{1,2}:\d{2}\)?$', p):
+                continue
+            clean_paras.append(p)
+
+        if not clean_paras:
+            continue
+
+        # Strategy A: Check if paragraphs are split into Subject row, Topic row(s), and Page row
+        subjects = []
+        subj_end = 0
+        for p in clean_paras:
+            subj = identify_subject(p)
+            page_str, _, _ = extract_page_info(p)
+            if subj and len(p) <= 10 and not page_str:
+                subjects.append(subj)
+                subj_end += 1
+            else:
+                break
+                
+        pages = []
+        page_start = len(clean_paras)
+        for k in range(len(clean_paras) - 1, -1, -1):
+            p = clean_paras[k]
+            page_str, sp, ep = extract_page_info(p)
+            if page_str or (re.search(r'\d+\s*[~-]\s*\d+', p) and len(p) <= 15):
+                pages.insert(0, (page_str, sp, ep, p))
+                page_start = k
+            else:
+                break
+
+        if len(subjects) >= 1:
+            num_days = len(subjects)
+            days_for_period = DAY_NAMES[:num_days]
+            if num_days == 3 and period_num == 5:
+                # 1~2학년 5교시는 보통 월, 화, 목
+                days_for_period = ['월', '화', '목']
+
+            topic_paras = clean_paras[subj_end:page_start]
+            topics = [""] * num_days
+            if len(topic_paras) == num_days:
+                topics = topic_paras
+            elif len(topic_paras) == num_days * 2:
+                for d in range(num_days):
+                    topics[d] = topic_paras[d*2] + " " + topic_paras[d*2+1]
+            elif len(topic_paras) > 0:
+                chunk_size = max(1, len(topic_paras) // num_days)
+                for d in range(num_days):
+                    start_t = d * chunk_size
+                    end_t = (d + 1) * chunk_size if d < num_days - 1 else len(topic_paras)
+                    topics[d] = " ".join(topic_paras[start_t:end_t])
+
+            for d_idx, day in enumerate(days_for_period):
+                subj = subjects[d_idx] if d_idx < len(subjects) else ""
+                pg_info = pages[d_idx] if d_idx < len(pages) else ("", None, None, "")
+                page_str, sp, ep = pg_info[0], pg_info[1], pg_info[2]
+                topic = topics[d_idx] if d_idx < len(topics) else ""
+                mbid = match_book_id(subj, available_books)
+                
+                schedule[day].append({
+                    "period": period_num,
+                    "subject": subj if subj else "학습",
+                    "matchedBookId": mbid,
+                    "topic": topic,
+                    "pageStr": page_str,
+                    "startPage": sp,
+                    "endPage": ep,
+                    "raw": f"{subj} {topic} {page_str}".strip()
+                })
+        else:
+            # Strategy B: Each paragraph is 1 cell per day
+            for d_idx, p in enumerate(clean_paras[:5]):
+                day = DAY_NAMES[d_idx]
+                subj = identify_subject(p)
+                page_str, sp, ep = extract_page_info(p)
+                mbid = match_book_id(subj, available_books)
+                schedule[day].append({
+                    "period": period_num,
+                    "subject": subj if subj else "학습",
+                    "matchedBookId": mbid,
+                    "topic": p[:40],
+                    "pageStr": page_str,
+                    "startPage": sp,
+                    "endPage": ep,
+                    "raw": p
+                })
+
+    return schedule
+
 def process_paragraphs(paragraphs, doc_title):
     """
     Fallback parser when HWP structure is flattened into paragraphs.
-    Extracts days and periods by heuristic regex matching.
+    Extracts days and periods by period-block grouping and heuristic matching.
     """
+    available_books = get_available_books()
+    
+    # 1. Primary parser: Period blocks (1~6교시)
+    block_schedule = parse_period_blocks(paragraphs, available_books)
+    if block_schedule and sum(len(v) for v in block_schedule.values()) > 0:
+        return {
+            "success": True,
+            "title": doc_title,
+            "schedule": block_schedule
+        }
+
+    # 2. Secondary fallback: check if paragraphs explicitly specify days
     schedule = {day: [] for day in DAY_NAMES}
     current_day = None
     current_period = 1
-    available_books = get_available_books()
 
-    # First attempt: check if table cell markers exist or paragraphs list days
     for para in paragraphs:
         for day in DAY_NAMES:
-            if re.search(rf'^{day}\b|\[{day}\]|\({day}\)|{day}요일', para):
+            if re.search(rf'\[{day}\]|\({day}\)|{day}요일', para):
                 current_day = day
                 current_period = 1
                 break
@@ -366,7 +499,6 @@ def process_paragraphs(paragraphs, doc_title):
                 })
                 current_period += 1
 
-    # If day-based didn't catch, try matching period blocks
     total_items = sum(len(v) for v in schedule.values())
     return {
         "success": total_items > 0,
