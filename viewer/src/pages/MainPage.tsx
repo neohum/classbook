@@ -733,17 +733,17 @@ export default function MainPage() {
             />
 
             {/* Bottom Floating Action Bar */}
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/90 text-white backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-2 sm:gap-3 pointer-events-auto transition-all animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/40 hover:bg-slate-900/60 text-white backdrop-blur-xl px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3 sm:gap-4 pointer-events-auto transition-all animate-in fade-in slide-in-from-bottom-4 duration-300 whitespace-nowrap select-none max-w-[95vw]">
                 {/* 주안 미리보기 (주학습 계획안) */}
                 <button
                     onClick={() => setIsScheduleModalOpen(true)}
-                    className="px-3.5 py-2 bg-slate-800 hover:bg-violet-600 text-slate-200 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 border border-slate-700/60 hover:border-violet-500 shadow-sm cursor-pointer group"
+                    className="px-4 py-2.5 bg-slate-800/50 hover:bg-violet-600/80 text-slate-100 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 border border-white/10 hover:border-violet-400/50 shadow-sm cursor-pointer group shrink-0 whitespace-nowrap"
                     title="주학습 계획안 미리보기 및 다른 날의 차시 열기"
                 >
-                    <Calendar className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform" />
-                    <span>주안 미리보기</span>
+                    <Calendar className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform shrink-0" />
+                    <span className="whitespace-nowrap">주안 미리보기</span>
                     {currentPlan && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                     )}
                 </button>
 
@@ -751,30 +751,30 @@ export default function MainPage() {
                 {currentPlan && (
                     <button
                         onClick={handleTriggerTestAlert}
-                        className="px-3.5 py-2 bg-slate-800 hover:bg-amber-600 text-amber-300 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 border border-slate-700/60 hover:border-amber-500 shadow-sm cursor-pointer group"
+                        className="px-4 py-2.5 bg-slate-800/50 hover:bg-amber-600/80 text-amber-300 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 border border-white/10 hover:border-amber-400/50 shadow-sm cursor-pointer group shrink-0 whitespace-nowrap"
                         title="수업 시작 알림 미리보기"
                     >
-                        <Bell className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                        <span>수업 알림 시연</span>
+                        <Bell className="w-4 h-4 group-hover:scale-110 transition-transform shrink-0" />
+                        <span className="whitespace-nowrap">수업 알림 시연</span>
                     </button>
                 )}
 
                 {/* 시종 시간·문구 설정 */}
                 <button
                     onClick={() => setIsBellConfigModalOpen(true)}
-                    className="px-3.5 py-2 bg-slate-800 hover:bg-violet-600 text-slate-200 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 border border-slate-700/60 hover:border-violet-500 shadow-sm cursor-pointer group"
+                    className="px-4 py-2.5 bg-slate-800/50 hover:bg-violet-600/80 text-slate-100 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 border border-white/10 hover:border-violet-400/50 shadow-sm cursor-pointer group shrink-0 whitespace-nowrap"
                     title="시종 시간 및 알림 문구 설정"
                 >
-                    <Clock className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform" />
-                    <span>시종 시간·문구 설정</span>
+                    <Clock className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform shrink-0" />
+                    <span className="whitespace-nowrap">시종 시간·문구 설정</span>
                 </button>
 
-                <div className="w-px h-6 bg-slate-700/80 my-auto" />
+                <div className="w-px h-6 bg-white/15 my-auto shrink-0" />
 
                 {/* Fullscreen Toggle */}
                 <button
                     onClick={toggleFullscreen}
-                    className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-all border border-slate-700/60 flex items-center justify-center cursor-pointer shadow-sm group"
+                    className="p-2.5 bg-slate-800/50 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-xl transition-all border border-white/10 flex items-center justify-center cursor-pointer shadow-sm group shrink-0"
                     aria-label={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
                     title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
                 >
@@ -784,7 +784,7 @@ export default function MainPage() {
                 {/* Exit Button */}
                 <button
                     onClick={Quit}
-                    className="p-2.5 bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white rounded-xl transition-all border border-slate-700/60 flex items-center justify-center cursor-pointer shadow-sm group"
+                    className="p-2.5 bg-slate-800/50 hover:bg-red-600/80 text-slate-300 hover:text-white rounded-xl transition-all border border-red-500/20 flex items-center justify-center cursor-pointer shadow-sm group shrink-0"
                     title="프로그램 종료"
                     aria-label="종료"
                 >

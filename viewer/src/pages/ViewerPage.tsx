@@ -6,6 +6,7 @@ import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatch
 import { main } from '../../wailsjs/go/models';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal from '../components/WeeklyPlanScheduleModal';
+import ScheduleConfigModal from '../components/ScheduleConfigModal';
 import { resolveBookForSubject } from '../utils/bookResolver';
 
 export interface ScheduleItem {
@@ -771,168 +772,22 @@ export default function ViewerPage() {
     };
 
     const renderScheduleModal = () => {
-        if (!isScheduleModalOpen) return null;
-
         return (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto p-4">
-                <div className="bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl flex flex-col p-6 sm:p-8 w-full max-w-4xl max-h-[90vh]">
-                    <div className="flex w-full items-center justify-between mb-6 pb-4 border-b border-slate-800">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-violet-600/20 text-violet-400 rounded-2xl border border-violet-500/30">
-                                <CalendarDays className="w-7 h-7" />
-                            </div>
-                            <div>
-                                <h2 className="text-white text-2xl font-black">시종 시간 및 알림 문구 설정</h2>
-                                <p className="text-xs text-slate-400">교시별 시간 및 시작/쉬는 시간에 표시될 알림 문구를 직접 입력하고 관리합니다.</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={() => setIsScheduleEnabled(!isScheduleEnabled)}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all font-semibold border ${isScheduleEnabled ? 'bg-violet-600 text-white border-violet-500 shadow-md shadow-violet-600/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
-                                title="시종 알림 켜기/끄기"
-                            >
-                                {isScheduleEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-                                <span>{isScheduleEnabled ? '시종 알림 켜짐' : '시종 알림 꺼짐'}</span>
-                            </button>
-                            <button
-                                onClick={() => setIsScheduleModalOpen(false)}
-                                className="text-slate-400 hover:text-white transition-colors p-2 rounded-full hover:bg-slate-800"
-                                title="닫기"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar flex-1 mb-4">
-                        {schedules.map((schedule, idx) => (
-                            <div key={schedule.id} className="bg-slate-800/80 p-5 rounded-2xl border border-slate-700/80 shadow-md flex flex-col gap-3">
-                                <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
-                                    <div className="flex items-center gap-3 flex-1">
-                                        <span className="w-7 h-7 rounded-lg bg-violet-900/50 border border-violet-700/50 text-violet-300 font-bold text-sm flex items-center justify-center">
-                                            {idx + 1}
-                                        </span>
-                                        <input
-                                            type="text"
-                                            value={schedule.name}
-                                            onChange={(e) => {
-                                                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, name: e.target.value } : s));
-                                            }}
-                                            className="bg-slate-900 text-white font-bold text-lg px-3 py-1.5 rounded-xl border border-slate-700 focus:border-violet-500 outline-none w-36"
-                                            placeholder="이름 (예: 1교시)"
-                                        />
-                                        <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-700">
-                                            <Clock className="w-4 h-4 text-slate-400" />
-                                            <input
-                                                type="time"
-                                                value={schedule.startTime}
-                                                onChange={(e) => {
-                                                    setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, startTime: e.target.value } : s));
-                                                }}
-                                                className="bg-transparent text-white font-mono font-bold outline-none text-sm"
-                                            />
-                                            <span className="text-slate-500 font-bold">~</span>
-                                            <input
-                                                type="time"
-                                                value={schedule.endTime}
-                                                onChange={(e) => {
-                                                    setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, endTime: e.target.value } : s));
-                                                }}
-                                                className="bg-transparent text-white font-mono font-bold outline-none text-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => setSchedules(prev => prev.filter(s => s.id !== schedule.id))}
-                                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition-colors"
-                                        title="이 교시 삭제"
-                                    >
-                                        <Trash2 className="w-5 h-5" />
-                                    </button>
-                                </div>
-
-                                {/* 문구 설정 행 */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-700/40">
-                                    <div className="flex flex-col gap-1">
-                                        <label className="text-xs font-semibold text-violet-300 flex items-center gap-1.5">
-                                            <Bell className="w-3.5 h-3.5" />
-                                            수업 시작 알림 문구:
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={schedule.startMessage || ""}
-                                            onChange={(e) => {
-                                                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, startMessage: e.target.value } : s));
-                                            }}
-                                            placeholder="수업 시작 시 화면에 표시될 문구 입력"
-                                            className="bg-slate-900 text-slate-200 text-sm px-3 py-2 rounded-xl border border-slate-700 focus:border-violet-500 outline-none placeholder:text-slate-500"
-                                        />
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                        <label className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
-                                            <Coffee className="w-3.5 h-3.5" />
-                                            쉬는 시간 알림 문구:
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={schedule.restMessage || ""}
-                                            onChange={(e) => {
-                                                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, restMessage: e.target.value } : s));
-                                            }}
-                                            placeholder="쉬는 시간이 되었을 때 화면에 표시될 문구 입력"
-                                            className="bg-slate-900 text-slate-200 text-sm px-3 py-2 rounded-xl border border-slate-700 focus:border-amber-500 outline-none placeholder:text-slate-500"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-800">
-                        <button
-                            onClick={() => {
-                                const newIdx = schedules.length + 1;
-                                const newId = Math.random().toString(36).substr(2, 9);
-                                setSchedules([
-                                    ...schedules,
-                                    {
-                                        id: newId,
-                                        period: newIdx,
-                                        name: `${newIdx}교시`,
-                                        startTime: '14:40',
-                                        endTime: '15:20',
-                                        startMessage: `${newIdx}교시 수업을 시작합니다.`,
-                                        restMessage: `${newIdx}교시 쉬는 시간입니다.`
-                                    }
-                                ]);
-                            }}
-                            className="flex items-center gap-2 px-5 py-3 border border-dashed border-violet-500/50 hover:border-violet-500 hover:bg-violet-500/10 text-violet-300 rounded-xl transition-all font-semibold text-sm"
-                        >
-                            <Plus className="w-4 h-4" /> 새 교시/일정 추가
-                        </button>
-
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={() => {
-                                    if (confirm('시종 시간표를 기본값으로 되돌리시겠습니까?')) {
-                                        setSchedules(defaultSchedule);
-                                    }
-                                }}
-                                className="px-4 py-2.5 text-slate-400 hover:text-slate-200 text-sm transition-colors"
-                            >
-                                기본값 복원
-                            </button>
-                            <button
-                                onClick={() => setIsScheduleModalOpen(false)}
-                                className="px-6 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl shadow-lg shadow-violet-600/30 transition-all text-sm"
-                            >
-                                저장 및 닫기
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <ScheduleConfigModal
+                isOpen={isScheduleModalOpen}
+                onClose={() => setIsScheduleModalOpen(false)}
+                onScheduleChanged={(newSched) => setSchedules(newSched)}
+                extraHeaderButton={
+                    <button
+                        onClick={() => setIsScheduleEnabled(!isScheduleEnabled)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all text-xs font-semibold border ${isScheduleEnabled ? 'bg-violet-600 text-white border-violet-500 shadow-md shadow-violet-600/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
+                        title="시종 알림 켜기/끄기"
+                    >
+                        {isScheduleEnabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+                        <span>{isScheduleEnabled ? '시종 알림 켜짐' : '시종 알림 꺼짐'}</span>
+                    </button>
+                }
+            />
         );
     };
 
