@@ -24,7 +24,9 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.0"
+const AppVersion = "1.2.1"
+const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
+const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
 
 type WasabiVersionInfo struct {
@@ -86,11 +88,24 @@ func (a *App) startup(ctx context.Context) {
 	// Start folder watcher
 	go a.startPlanFolderWatcher()
 
-	// Check for updates
+	// Immediate check for updates after frontend is ready
 	go func() {
+		time.Sleep(2 * time.Second)
 		status := a.CheckForUpdate()
 		if status != nil && status.HasUpdate {
 			runtime.EventsEmit(a.ctx, "update-available", status)
+		}
+	}()
+
+	// Periodic unattended update check (every 30 minutes)
+	go func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			status := a.CheckForUpdate()
+			if status != nil && status.HasUpdate {
+				runtime.EventsEmit(a.ctx, "update-available", status)
+			}
 		}
 	}()
 }
@@ -134,34 +149,30 @@ func (a *App) CheckForUpdate() *UpdateStatus {
 	currentVersionStr := strings.TrimPrefix(AppVersion, "v")
 	currentVer, errCurr := version.NewVersion(currentVersionStr)
 
-	client := &http.Client{Timeout: 4 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second}
 
-	// 1. Check Wasabi S3 version.json first
-	wasabiResp, err := client.Get(WasabiVersionUrl)
-	if err == nil && wasabiResp.StatusCode == http.StatusOK {
-		defer wasabiResp.Body.Close()
-		var wasabiInfo WasabiVersionInfo
-		if json.NewDecoder(wasabiResp.Body).Decode(&wasabiInfo) == nil {
-			wasabiVerStr := strings.TrimPrefix(wasabiInfo.Version, "v")
-			wasabiVer, errW := version.NewVersion(wasabiVerStr)
-			if errW == nil && errCurr == nil && wasabiVer.GreaterThan(currentVer) {
+	// 1. Check GitHub raw version.json (Fastest, 100% public, no rate limits)
+	rawResp, err := client.Get(GitHubRawVersionUrl)
+	if err == nil && rawResp.StatusCode == http.StatusOK {
+		defer rawResp.Body.Close()
+		var vInfo WasabiVersionInfo
+		if json.NewDecoder(rawResp.Body).Decode(&vInfo) == nil {
+			vStr := strings.TrimPrefix(vInfo.Version, "v")
+			vVer, errV := version.NewVersion(vStr)
+			if errV == nil && errCurr == nil && vVer.GreaterThan(currentVer) {
 				return &UpdateStatus{
 					HasUpdate:   true,
-					LatestVer:   wasabiInfo.Version,
-					DownloadUrl: wasabiInfo.DownloadUrl,
+					LatestVer:   vInfo.Version,
+					DownloadUrl: vInfo.DownloadUrl,
 				}
 			}
 		}
 	}
 
-	// 2. Fallback: GitHub Releases
-	resp, err := client.Get("https://api.github.com/repos/neohum/classbook/releases/latest")
-	if err != nil {
-		return &UpdateStatus{HasUpdate: false, LatestVer: AppVersion}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
+	// 2. Check GitHub Releases API
+	resp, err := client.Get(GitHubReleaseApiUrl)
+	if err == nil && resp.StatusCode == http.StatusOK {
+		defer resp.Body.Close()
 		var release GitHubRelease
 		if err := json.NewDecoder(resp.Body).Decode(&release); err == nil {
 			latestVersionStr := strings.TrimPrefix(release.TagName, "v")
@@ -186,6 +197,24 @@ func (a *App) CheckForUpdate() *UpdateStatus {
 		}
 	}
 
+	// 3. Check Wasabi S3 version.json
+	wasabiResp, err := client.Get(WasabiVersionUrl)
+	if err == nil && wasabiResp.StatusCode == http.StatusOK {
+		defer wasabiResp.Body.Close()
+		var wasabiInfo WasabiVersionInfo
+		if json.NewDecoder(wasabiResp.Body).Decode(&wasabiInfo) == nil {
+			wasabiVerStr := strings.TrimPrefix(wasabiInfo.Version, "v")
+			wasabiVer, errW := version.NewVersion(wasabiVerStr)
+			if errW == nil && errCurr == nil && wasabiVer.GreaterThan(currentVer) {
+				return &UpdateStatus{
+					HasUpdate:   true,
+					LatestVer:   wasabiInfo.Version,
+					DownloadUrl: wasabiInfo.DownloadUrl,
+				}
+			}
+		}
+	}
+
 	return &UpdateStatus{
 		HasUpdate: false,
 		LatestVer: AppVersion,
@@ -195,6 +224,9 @@ func (a *App) CheckForUpdate() *UpdateStatus {
 func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
 	tempDir := os.TempDir()
 	installerPath := filepath.Join(tempDir, fmt.Sprintf("classbook-setup-%s.exe", tagName))
+
+	// Clean up previous temp installer
+	os.Remove(installerPath)
 
 	out, err := os.Create(installerPath)
 	if err != nil {
@@ -218,16 +250,27 @@ func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
 
 	out.Close()
 
-	cmd := exec.Command(installerPath)
+	// Launch installer silently (/S) with administrator privileges via PowerShell Start-Process
+	// -Verb RunAs provides required UAC elevation without CreateProcess error 740
+	// /S executes NSIS in silent mode without user intervention
+	cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+		fmt.Sprintf("Start-Process -FilePath '%s' -ArgumentList '/S' -Verb RunAs", installerPath))
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x08000000, // CREATE_NO_WINDOW
 	}
 	err = cmd.Start()
 	if err != nil {
-		fmt.Println("Failed to start installer:", err)
-		return
+		fmt.Println("Failed to start installer via PowerShell:", err)
+		// Direct execution fallback with /S
+		fallbackCmd := exec.Command(installerPath, "/S")
+		fallbackCmd.SysProcAttr = &syscall.SysProcAttr{
+			CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+		}
+		fallbackCmd.Start()
 	}
 
+	// Grace period before current process exits so the installer can take over
+	time.Sleep(500 * time.Millisecond)
 	os.Exit(0)
 }
 

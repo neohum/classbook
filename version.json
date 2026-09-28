@@ -1,0 +1,9 @@
+{
+  "version": "1.2.1",
+  "releaseDate": "2026-09-28",
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.1/classbook-setup-v1.2.1.exe",
+  "installerName": "classbook-setup-v1.2.1.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.1.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260928%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260928T042812Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3d253bfcf7957a9acacbad6995333ba9b7534e128c9143e74c8c14df6c07438d",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.1.exe",
+  "notes": "무인 자동 업데이트 기능 개선 (자동 감지, 백그라운드 다운로드, 무인 사일런트 설치 및 자동 재시작)"
+}
