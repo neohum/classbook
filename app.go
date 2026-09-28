@@ -215,6 +215,9 @@ func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
 	out.Close()
 
 	cmd := exec.Command(installerPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+	}
 	err = cmd.Start()
 	if err != nil {
 		fmt.Println("Failed to start installer:", err)
