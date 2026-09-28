@@ -1,9 +1,9 @@
 {
-  "version": "1.2.5",
+  "version": "1.2.6",
   "releaseDate": "2026-09-28",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.5/classbook-setup-v1.2.5.exe",
-  "installerName": "classbook-setup-v1.2.5.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.5.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260928%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260928T061744Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=416849b522080eeecb2316309dafad1895a61336ae18cffbef2a06554ecea13e",
-  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.5.exe",
-  "notes": "메인 플로팅 메뉴 좌우 확장 및 반투명 유리 효과 적용, 시종 시간 직접 입력 및 드래그 앤 드롭 순서 변경 지원 (v1.2.5)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.6/classbook-setup-v1.2.6.exe",
+  "installerName": "classbook-setup-v1.2.6.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.6.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260928%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260928T062114Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bec8c73d24495e9ee2baf08933eb472f43ad6a348d132591a58996dbe93be1fd",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.6.exe",
+  "notes": "교과서 뷰어 좌우 메뉴를 반투명 블러 플로팅 독 및 반투명 플로팅 버튼으로 개선 (v1.2.6)"
 }

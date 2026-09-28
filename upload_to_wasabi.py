@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "메인 플로팅 메뉴 좌우 확장 및 반투명 유리 효과 적용, 시종 시간 직접 입력 및 드래그 앤 드롭 순서 변경 지원 (v1.2.5)"
+    notes = "교과서 뷰어 좌우 메뉴를 반투명 블러 플로팅 독 및 반투명 플로팅 버튼으로 개선 (v1.2.6)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()
