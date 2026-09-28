@@ -174,7 +174,18 @@ export default function MainPage() {
                 if (folder) setWatchFolder(folder);
 
                 const plan = await GetLatestWeeklyPlan();
-                if (plan && plan.success) setCurrentPlan(plan);
+                if (plan && plan.success) {
+                    setCurrentPlan(plan);
+
+                    // 앱 시작 시 한 번만 현재 요일 & 시간에 맞춰 해당 교과서 페이지로 자동 진입!
+                    const hasNavigated = sessionStorage.getItem('classbook_initial_nav_done');
+                    if (!hasNavigated) {
+                        sessionStorage.setItem('classbook_initial_nav_done', 'true');
+                        setTimeout(() => {
+                            applyWeeklyPlan(plan);
+                        }, 400);
+                    }
+                }
             } catch (err) {
                 console.error("Failed to load initial data:", err);
             }
@@ -455,6 +466,8 @@ export default function MainPage() {
     const handleGoToBook = (bookId: string, pageNumber: number) => {
         const resolved = resolveBookForSubject(bookId, bookId, textbooks);
         const targetId = resolved ? resolved.id : bookId;
+        const bookName = resolved ? resolved.title : bookId;
+        showToast(`[${bookName} ${pageNumber}쪽]으로 이동합니다.`);
         navigate(`/viewer/${encodeURIComponent(targetId)}?targetPage=${pageNumber}`);
     };
 
@@ -483,7 +496,7 @@ export default function MainPage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8 font-sans">
+        <div className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8 font-sans pb-32">
             {/* Header with Title and Control Buttons */}
             <header data-wails-drag className="max-w-6xl mx-auto mb-10 mt-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -500,62 +513,6 @@ export default function MainPage() {
                                 교과서 쪽수를 자동으로 맞추고, 주학습계획안과 실시간으로 연동되는 전자 교과서
                             </p>
                         </div>
-                    </div>
-
-                    <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="flex items-center gap-2 flex-wrap">
-                        {/* Weekly Plan Schedule Modal Button */}
-                        <button
-                            onClick={() => setIsScheduleModalOpen(true)}
-                            className="px-4 py-2.5 bg-white hover:bg-violet-50 border border-slate-200 hover:border-violet-300 text-slate-700 hover:text-violet-700 rounded-xl transition-all font-bold text-sm shadow-xs flex items-center gap-2 cursor-pointer"
-                            title="주학습 계획안 보기"
-                        >
-                            <Calendar className="w-4 h-4 text-violet-600" />
-                            <span>주학습 계획안</span>
-                            {currentPlan && (
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            )}
-                        </button>
-
-                        {/* Test Alert Button */}
-                        {currentPlan && (
-                            <button
-                                onClick={handleTriggerTestAlert}
-                                className="px-3.5 py-2.5 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                                title="수업 시작 알림 미리보기"
-                            >
-                                <Bell className="w-4 h-4" />
-                                <span>수업 알림 시연</span>
-                            </button>
-                        )}
-
-                        {/* 시종 시간 및 문구 설정 버튼 (수업 알림 시연 버튼과 최대화 버튼 사이) */}
-                        <button
-                            onClick={() => setIsBellConfigModalOpen(true)}
-                            className="px-3.5 py-2.5 bg-white hover:bg-violet-50 border border-slate-200 hover:border-violet-300 text-slate-700 hover:text-violet-700 rounded-xl transition-all font-bold text-sm shadow-xs flex items-center gap-1.5 cursor-pointer"
-                            title="시종 시간 및 알림 문구 설정"
-                        >
-                            <Clock className="w-4 h-4 text-violet-600" />
-                            <span>시종 시간·문구 설정</span>
-                        </button>
-
-                        {/* Fullscreen Toggle */}
-                        <button
-                            onClick={toggleFullscreen}
-                            className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:bg-violet-50 rounded-xl transition-colors flex items-center justify-center cursor-pointer shadow-xs"
-                            aria-label={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
-                        >
-                            {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                        </button>
-
-                        {/* Exit Button */}
-                        <button
-                            onClick={Quit}
-                            className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors flex items-center justify-center cursor-pointer shadow-xs"
-                            title="프로그램 종료"
-                            aria-label="종료"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
                     </div>
                 </div>
 
@@ -774,6 +731,66 @@ export default function MainPage() {
                 onClose={() => setIsBellConfigModalOpen(false)}
                 onScheduleChanged={(newSched) => setSchedules(newSched)}
             />
+
+            {/* Bottom Floating Action Bar */}
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/90 text-white backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-2 sm:gap-3 pointer-events-auto transition-all animate-in fade-in slide-in-from-bottom-4 duration-300">
+                {/* 주안 미리보기 (주학습 계획안) */}
+                <button
+                    onClick={() => setIsScheduleModalOpen(true)}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-violet-600 text-slate-200 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 border border-slate-700/60 hover:border-violet-500 shadow-sm cursor-pointer group"
+                    title="주학습 계획안 미리보기 및 다른 날의 차시 열기"
+                >
+                    <Calendar className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform" />
+                    <span>주안 미리보기</span>
+                    {currentPlan && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    )}
+                </button>
+
+                {/* 수업 알림 시연 */}
+                {currentPlan && (
+                    <button
+                        onClick={handleTriggerTestAlert}
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-amber-600 text-amber-300 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 border border-slate-700/60 hover:border-amber-500 shadow-sm cursor-pointer group"
+                        title="수업 시작 알림 미리보기"
+                    >
+                        <Bell className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        <span>수업 알림 시연</span>
+                    </button>
+                )}
+
+                {/* 시종 시간·문구 설정 */}
+                <button
+                    onClick={() => setIsBellConfigModalOpen(true)}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-violet-600 text-slate-200 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 border border-slate-700/60 hover:border-violet-500 shadow-sm cursor-pointer group"
+                    title="시종 시간 및 알림 문구 설정"
+                >
+                    <Clock className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform" />
+                    <span>시종 시간·문구 설정</span>
+                </button>
+
+                <div className="w-px h-6 bg-slate-700/80 my-auto" />
+
+                {/* Fullscreen Toggle */}
+                <button
+                    onClick={toggleFullscreen}
+                    className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-all border border-slate-700/60 flex items-center justify-center cursor-pointer shadow-sm group"
+                    aria-label={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
+                    title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
+                >
+                    {isFullscreen ? <Minimize className="w-4 h-4 group-hover:scale-110 transition-transform" /> : <Maximize className="w-4 h-4 group-hover:scale-110 transition-transform" />}
+                </button>
+
+                {/* Exit Button */}
+                <button
+                    onClick={Quit}
+                    className="p-2.5 bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white rounded-xl transition-all border border-slate-700/60 flex items-center justify-center cursor-pointer shadow-sm group"
+                    title="프로그램 종료"
+                    aria-label="종료"
+                >
+                    <X className="w-4 h-4 text-red-400 group-hover:text-white group-hover:scale-110 transition-transform" />
+                </button>
+            </div>
         </div>
     );
 }

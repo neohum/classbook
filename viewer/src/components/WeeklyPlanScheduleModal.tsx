@@ -159,10 +159,15 @@ export default function WeeklyPlanScheduleModal({
                             return (
                                 <div
                                     key={idx}
-                                    className="p-4 bg-slate-50 hover:bg-violet-50/50 border border-slate-200/80 hover:border-violet-300 rounded-2xl transition-all flex items-center justify-between gap-4 group"
+                                    onClick={() => {
+                                        onClose();
+                                        onGoToBook(targetBookId, targetPage);
+                                    }}
+                                    className="p-4 bg-slate-50 hover:bg-violet-50/80 border border-slate-200/80 hover:border-violet-400 rounded-2xl transition-all flex items-center justify-between gap-4 group cursor-pointer shadow-xs hover:shadow-md"
+                                    title={`${selectedDay}요일 ${item.period}교시 [${item.subject} ${targetPage}쪽] 즉시 보기`}
                                 >
                                     <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 bg-white rounded-xl shadow-xs border border-slate-200 flex flex-col items-center justify-center shrink-0">
+                                        <div className="w-12 h-12 bg-white rounded-xl shadow-xs border border-slate-200 group-hover:border-violet-300 flex flex-col items-center justify-center shrink-0 transition-colors">
                                             <span className="text-[11px] text-slate-400 font-bold leading-none">교시</span>
                                             <span className="text-lg font-black text-violet-600 leading-none mt-0.5">
                                                 {item.period}
@@ -171,7 +176,7 @@ export default function WeeklyPlanScheduleModal({
 
                                         <div>
                                             <div className="flex items-center gap-2 mb-0.5">
-                                                <h4 className="text-base font-bold text-slate-900">
+                                                <h4 className="text-base font-bold text-slate-900 group-hover:text-violet-900 transition-colors">
                                                     {item.subject}
                                                 </h4>
                                                 {item.pageStr && (
@@ -190,14 +195,15 @@ export default function WeeklyPlanScheduleModal({
 
                                     {/* Action button */}
                                     <button
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                            e.stopPropagation();
                                             onClose();
                                             onGoToBook(targetBookId, targetPage);
                                         }}
                                         className="shrink-0 px-3.5 py-2 bg-white group-hover:bg-violet-600 text-slate-700 group-hover:text-white border border-slate-300 group-hover:border-violet-600 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
                                     >
                                         <BookOpen className="w-3.5 h-3.5" />
-                                        <span>교과서 {targetPage}쪽 열기</span>
+                                        <span>{targetPage}쪽 열기</span>
                                         <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                                     </button>
                                 </div>
