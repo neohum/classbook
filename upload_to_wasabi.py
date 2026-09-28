@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "무인 자동 업데이트 기능 개선 (자동 감지, 백그라운드 다운로드, 무인 사일런트 설치 및 자동 재시작)"
+    notes = "시종 시간·문구 설정 버튼 첫 화면 배치, 수업 시작 시 과목 페이지 자동 표출, 마칠 때 '쉬는 시간입니다' 기본 안내, 주학습계획안 시간표 자동 연동 강화"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

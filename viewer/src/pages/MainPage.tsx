@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
     BookOpen, BookCopy, ArrowRight, X, Maximize, Minimize, 
     Trash2, Plus, Loader2, Calendar, FolderOpen, Upload, 
-    SlidersHorizontal, Bell, Sparkles, CheckCircle2 
+    SlidersHorizontal, Bell, Sparkles, CheckCircle2, Clock 
 } from 'lucide-react';
 import { Quit, WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { 
@@ -19,18 +19,11 @@ import { detectPageNumberFromText, detectPageNumberFromCanvas } from '../utils/o
 import PageOffsetAdjustModal from '../components/PageOffsetAdjustModal';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal from '../components/WeeklyPlanScheduleModal';
+import ScheduleConfigModal, { getStoredSchedule, type ScheduleItem } from '../components/ScheduleConfigModal';
+import { resolveBookForSubject } from '../utils/bookResolver';
 
 // Configure PDF.js worker using Vite's ?url literal for local bundling
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
-
-const defaultSchedule = [
-    { period: 1, startTime: '09:00', endTime: '09:40' },
-    { period: 2, startTime: '09:50', endTime: '10:30' },
-    { period: 3, startTime: '10:40', endTime: '11:20' },
-    { period: 4, startTime: '11:30', endTime: '12:10' },
-    { period: 5, startTime: '13:00', endTime: '13:40' },
-    { period: 6, startTime: '13:50', endTime: '14:30' },
-];
 
 function PdfThumbnail({ bookId }: { bookId: string }) {
     const [loading, setLoading] = useState(true);
@@ -86,7 +79,13 @@ export default function MainPage() {
     const [alertPeriod, setAlertPeriod] = useState(1);
     const [alertPeriodTime, setAlertPeriodTime] = useState('');
     const [alertItem, setAlertItem] = useState<main.WeeklyPlanItem | null>(null);
+    const [alertIsRestTime, setAlertIsRestTime] = useState(false);
+    const [alertCustomMessage, setAlertCustomMessage] = useState('');
     const lastAlertTimeRef = useRef<string>('');
+
+    // Schedule Config Modal State
+    const [isBellConfigModalOpen, setIsBellConfigModalOpen] = useState(false);
+    const [schedules, setSchedules] = useState<ScheduleItem[]>(() => getStoredSchedule());
 
     // Page Offset Modal State
     const [offsetModalBook, setOffsetModalBook] = useState<{
@@ -103,6 +102,62 @@ export default function MainPage() {
     const showToast = (msg: string) => {
         setToastMessage(msg);
         setTimeout(() => setToastMessage(''), 4000);
+    };
+
+    // Helper: Apply weekly plan to navigate to current period's book and page
+    const applyWeeklyPlan = async (plan: main.WeeklyPlanResult) => {
+        if (!plan || !plan.success || !plan.schedule) return;
+
+        const now = new Date();
+        const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+        const targetDay = (dayOfWeek === '일' || dayOfWeek === '토') ? '월' : dayOfWeek;
+        const dayItems = plan.schedule[targetDay] || [];
+        if (dayItems.length === 0) return;
+
+        const hh = now.getHours().toString().padStart(2, '0');
+        const mm = now.getMinutes().toString().padStart(2, '0');
+        const currentTimeStr = `${hh}:${mm}`;
+
+        const currentSchedules = getStoredSchedule();
+
+        let activePeriod = 1;
+        for (let i = 0; i < currentSchedules.length; i++) {
+            const s = currentSchedules[i];
+            const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+            if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
+                activePeriod = pNum;
+                break;
+            } else if (currentTimeStr < s.startTime) {
+                activePeriod = pNum;
+                break;
+            } else if (currentTimeStr > s.endTime) {
+                activePeriod = pNum;
+            }
+        }
+
+        let targetItem = dayItems.find(it => it.period === activePeriod);
+        if (!targetItem && dayItems.length > 0) {
+            targetItem = dayItems[activePeriod - 1] || dayItems[0];
+        }
+
+        if (targetItem) {
+            const targetPage = targetItem.startPage || 1;
+            let currentBooks = textbooks;
+            if (!currentBooks || currentBooks.length === 0) {
+                currentBooks = (await GetTextbooks()) || [];
+                if (currentBooks.length > 0) setTextbooks(currentBooks);
+            }
+
+            const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, currentBooks);
+            if (resolved) {
+                showToast(`주학습계획안 반영: ${targetDay}요일 ${targetItem.period || activePeriod}교시 [${resolved.title} ${targetPage}쪽]으로 이동합니다.`);
+                setTimeout(() => {
+                    navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}&startAlert=true`);
+                }, 600);
+            } else {
+                showToast(`주학습계획안: ${targetDay}요일 ${targetItem.period || activePeriod}교시 [${targetItem.subject} ${targetPage}쪽] 일치하는 교재를 찾지 못했습니다.`);
+            }
+        }
     };
 
     // Load initial data on mount
@@ -126,42 +181,6 @@ export default function MainPage() {
         };
         loadInitialData();
 
-        const applyWeeklyPlan = (plan: main.WeeklyPlanResult) => {
-            if (!plan || !plan.success || !plan.schedule) return;
-
-            const now = new Date();
-            const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
-            const targetDay = (dayOfWeek === '일' || dayOfWeek === '토') ? '월' : dayOfWeek;
-            const dayItems = plan.schedule[targetDay] || [];
-            if (dayItems.length === 0) return;
-
-            const hh = now.getHours().toString().padStart(2, '0');
-            const mm = now.getMinutes().toString().padStart(2, '0');
-            const currentTimeStr = `${hh}:${mm}`;
-
-            let activePeriod = 1;
-            for (const s of defaultSchedule) {
-                if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
-                    activePeriod = s.period;
-                    break;
-                } else if (currentTimeStr < s.startTime) {
-                    activePeriod = s.period;
-                    break;
-                } else if (currentTimeStr > s.endTime) {
-                    activePeriod = Math.min(6, s.period + 1);
-                }
-            }
-
-            const targetItem = dayItems.find(it => it.period === activePeriod) || dayItems[0];
-            if (targetItem && targetItem.matchedBookId) {
-                const targetPage = targetItem.startPage || 1;
-                showToast(`주학습계획안 반영: ${targetDay}요일 ${targetItem.period}교시 [${targetItem.subject} ${targetPage}쪽]으로 이동합니다.`);
-                setTimeout(() => {
-                    navigate(`/viewer/${encodeURIComponent(targetItem.matchedBookId)}?targetPage=${targetPage}`);
-                }, 1200);
-            }
-        };
-
         // Listen for weekly plan updates from folder watcher
         const handlePlanUpdate = (plan: main.WeeklyPlanResult) => {
             if (plan && plan.success) {
@@ -171,13 +190,22 @@ export default function MainPage() {
             }
         };
 
+        // Listen for schedule updates from settings modal
+        const handleScheduleUpdate = () => {
+            setSchedules(getStoredSchedule());
+        };
+        window.addEventListener('classbook_schedule_updated', handleScheduleUpdate);
+
         EventsOn('weekly-plan-updated', handlePlanUpdate);
-        return () => EventsOff('weekly-plan-updated');
+        return () => {
+            EventsOff('weekly-plan-updated');
+            window.removeEventListener('classbook_schedule_updated', handleScheduleUpdate);
+        };
     }, [navigate]);
 
     // Time-based Class Alert Checker
     useEffect(() => {
-        const checkCurrentClass = () => {
+        const checkCurrentClass = async () => {
             if (!currentPlan || !currentPlan.schedule) return;
 
             const now = new Date();
@@ -190,19 +218,52 @@ export default function MainPage() {
 
             if (lastAlertTimeRef.current === currentTimeStr) return;
 
-            // Check if current time matches any period start
-            for (const sched of defaultSchedule) {
+            const currentSchedules = getStoredSchedule();
+
+            // Check if current time matches any period start or end
+            for (let i = 0; i < currentSchedules.length; i++) {
+                const sched = currentSchedules[i];
+                const schedPeriod = sched.period || parseInt(sched.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+
                 if (sched.startTime === currentTimeStr) {
                     lastAlertTimeRef.current = currentTimeStr;
                     const dayItems = currentPlan.schedule[dayOfWeek] || [];
-                    const foundItem = dayItems.find(it => it.period === sched.period);
+                    let foundItem = dayItems.find(it => it.period === schedPeriod);
+                    if (!foundItem && dayItems.length > 0) {
+                        foundItem = dayItems[schedPeriod - 1] || dayItems[0];
+                    }
 
                     if (foundItem) {
-                        setAlertPeriod(sched.period);
+                        setAlertPeriod(schedPeriod);
                         setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
                         setAlertItem(foundItem);
+                        setAlertIsRestTime(false);
+                        setAlertCustomMessage(sched.startMessage || `${schedPeriod}교시 수업을 시작합니다! 자리에 앉아주세요.`);
                         setIsAlertModalOpen(true);
+
+                        // 수업 시작 시: 과목 페이지가 자동으로 뜨도록 뷰어로 즉시 이동!
+                        const targetPage = foundItem.startPage || 1;
+                        let currentBooks = textbooks;
+                        if (!currentBooks || currentBooks.length === 0) {
+                            currentBooks = (await GetTextbooks()) || [];
+                        }
+                        const resolved = resolveBookForSubject(foundItem.subject, foundItem.matchedBookId, currentBooks);
+                        if (resolved) {
+                            setTimeout(() => {
+                                navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}&startAlert=true`);
+                            }, 500);
+                        }
                     }
+                    break;
+                } else if (sched.endTime === currentTimeStr) {
+                    lastAlertTimeRef.current = currentTimeStr;
+                    // 마칠 때 (쉬는 시간 시작): "쉬는 시간입니다"가 기본으로 뜸
+                    setAlertPeriod(schedPeriod);
+                    setAlertPeriodTime(sched.endTime);
+                    setAlertItem(null);
+                    setAlertIsRestTime(true);
+                    setAlertCustomMessage(sched.restMessage || "쉬는 시간입니다");
+                    setIsAlertModalOpen(true);
                     break;
                 }
             }
@@ -210,7 +271,7 @@ export default function MainPage() {
 
         const timer = setInterval(checkCurrentClass, 1000);
         return () => clearInterval(timer);
-    }, [currentPlan]);
+    }, [currentPlan, textbooks, navigate]);
 
     const handleDelete = async (e: React.MouseEvent, bookId: string) => {
         e.stopPropagation();
@@ -392,9 +453,8 @@ export default function MainPage() {
 
     // Quick navigation from weekly plan to book page
     const handleGoToBook = (bookId: string, pageNumber: number) => {
-        // Find if bookId matches any textbook
-        const found = textbooks.find(b => b.id === bookId || b.id.includes(bookId) || bookId.includes(b.id));
-        const targetId = found ? found.id : bookId;
+        const resolved = resolveBookForSubject(bookId, bookId, textbooks);
+        const targetId = resolved ? resolved.id : bookId;
         navigate(`/viewer/${encodeURIComponent(targetId)}?targetPage=${pageNumber}`);
     };
 
@@ -468,6 +528,16 @@ export default function MainPage() {
                             </button>
                         )}
 
+                        {/* 시종 시간 및 문구 설정 버튼 (수업 알림 시연 버튼과 최대화 버튼 사이) */}
+                        <button
+                            onClick={() => setIsBellConfigModalOpen(true)}
+                            className="px-3.5 py-2.5 bg-white hover:bg-violet-50 border border-slate-200 hover:border-violet-300 text-slate-700 hover:text-violet-700 rounded-xl transition-all font-bold text-sm shadow-xs flex items-center gap-1.5 cursor-pointer"
+                            title="시종 시간 및 알림 문구 설정"
+                        >
+                            <Clock className="w-4 h-4 text-violet-600" />
+                            <span>시종 시간·문구 설정</span>
+                        </button>
+
                         {/* Fullscreen Toggle */}
                         <button
                             onClick={toggleFullscreen}
@@ -520,6 +590,7 @@ export default function MainPage() {
                                     if (res && res.success) {
                                         setCurrentPlan(res);
                                         showToast(`주학습계획안이 분석되었습니다: ${res.title}`);
+                                        applyWeeklyPlan(res);
                                     }
                                 } catch (e: any) {
                                     alert(`계획안 파일 로드 실패: ${e.message || e}`);
@@ -676,6 +747,7 @@ export default function MainPage() {
                 onPlanUpdated={(newPlan) => {
                     setCurrentPlan(newPlan);
                     showToast("주학습계획안이 업데이트되었습니다.");
+                    applyWeeklyPlan(newPlan);
                 }}
                 onWatchFolderChanged={(newFolder) => {
                     setWatchFolder(newFolder);
@@ -687,11 +759,20 @@ export default function MainPage() {
             {/* Class Period Alert Modal */}
             <WeeklyPlanAlertModal
                 isOpen={isAlertModalOpen}
-                period={alertPeriod}
+                isRestTime={alertIsRestTime}
+                periodName={`${alertPeriod}교시`}
                 periodTime={alertPeriodTime}
+                customMessage={alertCustomMessage}
                 item={alertItem}
                 onClose={() => setIsAlertModalOpen(false)}
                 onGoToBook={handleGoToBook}
+            />
+
+            {/* Schedule & Alert Text Config Modal */}
+            <ScheduleConfigModal
+                isOpen={isBellConfigModalOpen}
+                onClose={() => setIsBellConfigModalOpen(false)}
+                onScheduleChanged={(newSched) => setSchedules(newSched)}
             />
         </div>
     );

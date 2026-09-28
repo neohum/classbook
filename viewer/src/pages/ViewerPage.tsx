@@ -2,10 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen, Minus, Calendar, Coffee, Sparkles } from 'lucide-react';
 import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, WindowMinimise, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
-import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatchFolder, UpdateBookOffset } from '../../wailsjs/go/main/App';
+import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatchFolder, UpdateBookOffset, GetTextbooks } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal from '../components/WeeklyPlanScheduleModal';
+import { resolveBookForSubject } from '../utils/bookResolver';
 
 export interface ScheduleItem {
     id: string;
@@ -18,12 +19,12 @@ export interface ScheduleItem {
 }
 
 const defaultSchedule: ScheduleItem[] = [
-    { id: '1', period: 1, name: '1교시', startTime: '09:00', endTime: '09:40', startMessage: '1교시 수업을 시작합니다. 자리에 바르게 앉아주세요!', restMessage: '1교시 쉬는 시간입니다! 다음 교재를 준비하고 화장실에 다녀오세요.' },
-    { id: '2', period: 2, name: '2교시', startTime: '09:50', endTime: '10:30', startMessage: '2교시 수업을 시작합니다. 바른 자세로 집중해요.', restMessage: '2교시 쉬는 시간입니다! 다음 시간 교재를 준비해요.' },
-    { id: '3', period: 3, name: '3교시', startTime: '10:40', endTime: '11:20', startMessage: '3교시 수업을 시작합니다.', restMessage: '3교시 쉬는 시간입니다! 다음 시간 교재를 준비해요.' },
-    { id: '4', period: 4, name: '4교시', startTime: '11:30', endTime: '12:10', startMessage: '4교시 수업을 시작합니다.', restMessage: '맛있는 점심시간입니다! 손을 깨끗이 씻고 질서를 지켜 식사해요.' },
-    { id: '5', period: 5, name: '5교시', startTime: '13:00', endTime: '13:40', startMessage: '5교시 오후 수업을 시작합니다.', restMessage: '5교시 쉬는 시간입니다! 다음 시간 교재를 준비해요.' },
-    { id: '6', period: 6, name: '6교시', startTime: '13:50', endTime: '14:30', startMessage: '6교시 수업을 시작합니다.', restMessage: '오늘 모든 수업이 끝났습니다! 주변을 정리하고 안전하게 하교해요.' },
+    { id: '1', period: 1, name: '1교시', startTime: '09:00', endTime: '09:40', startMessage: '1교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
+    { id: '2', period: 2, name: '2교시', startTime: '09:50', endTime: '10:30', startMessage: '2교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
+    { id: '3', period: 3, name: '3교시', startTime: '10:40', endTime: '11:20', startMessage: '3교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
+    { id: '4', period: 4, name: '4교시', startTime: '11:30', endTime: '12:10', startMessage: '4교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
+    { id: '5', period: 5, name: '5교시', startTime: '13:00', endTime: '13:40', startMessage: '5교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
+    { id: '6', period: 6, name: '6교시', startTime: '13:50', endTime: '14:30', startMessage: '6교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
 ];
 
 let sharedAudioContext: AudioContext | null = null;
@@ -253,6 +254,54 @@ export default function ViewerPage() {
             if (plan && plan.success) {
                 setCurrentPlan(plan);
                 currentPlanRef.current = plan;
+
+                // If startAlert param is present in URL, trigger alert modal
+                if (searchParams.get('startAlert') === 'true') {
+                    const now = new Date();
+                    const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+                    const targetDay = (dayOfWeek === '일' || dayOfWeek === '토') ? '월' : dayOfWeek;
+                    const dayItems = plan.schedule[targetDay] || [];
+                    const currentScheds = getStoredSchedule();
+
+                    const hh = now.getHours().toString().padStart(2, '0');
+                    const mm = now.getMinutes().toString().padStart(2, '0');
+                    const currentTimeStr = `${hh}:${mm}`;
+
+                    let activePeriod = 1;
+                    let activeSched = currentScheds[0];
+                    for (let i = 0; i < currentScheds.length; i++) {
+                        const s = currentScheds[i];
+                        const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+                        if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
+                            activePeriod = pNum;
+                            activeSched = s;
+                            break;
+                        } else if (currentTimeStr < s.startTime) {
+                            activePeriod = pNum;
+                            activeSched = s;
+                            break;
+                        } else if (currentTimeStr > s.endTime) {
+                            activePeriod = pNum;
+                            activeSched = s;
+                        }
+                    }
+
+                    let targetItem = dayItems.find(it => it.period === activePeriod);
+                    if (!targetItem && dayItems.length > 0) {
+                        targetItem = dayItems[activePeriod - 1] || dayItems[0];
+                    }
+
+                    if (targetItem) {
+                        setAlertData({
+                            isOpen: true,
+                            isRestTime: false,
+                            periodName: activeSched?.name || `${activePeriod}교시`,
+                            periodTime: activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '',
+                            customMessage: activeSched?.startMessage || `${activePeriod}교시 수업을 시작합니다! 자리에 앉아주세요.`,
+                            item: targetItem
+                        });
+                    }
+                }
             }
         }).catch(console.error);
 
@@ -268,9 +317,17 @@ export default function ViewerPage() {
             }
         };
 
+        const handleScheduleUpdate = () => {
+            setSchedules(getStoredSchedule());
+        };
+        window.addEventListener('classbook_schedule_updated', handleScheduleUpdate);
+
         EventsOn('weekly-plan-updated', handlePlanUpdate);
-        return () => EventsOff('weekly-plan-updated');
-    }, [bookId, numPages, pageOffset]);
+        return () => {
+            EventsOff('weekly-plan-updated');
+            window.removeEventListener('classbook_schedule_updated', handleScheduleUpdate);
+        };
+    }, [bookId, numPages, pageOffset, searchParams]);
 
     const handleOffsetChange = (newPrintedPage: number) => {
         if (isNaN(newPrintedPage)) return;
@@ -387,7 +444,7 @@ export default function ViewerPage() {
         setIsSettingsOpen(true);
     };
 
-    const applyWeeklyPlanNow = (plan: main.WeeklyPlanResult) => {
+    const applyWeeklyPlanNow = async (plan: main.WeeklyPlanResult) => {
         if (!plan || !plan.success || !plan.schedule) return;
 
         const now = new Date();
@@ -411,23 +468,27 @@ export default function ViewerPage() {
                 activePeriod = pNum;
                 break;
             } else if (currentTimeStr > s.endTime) {
-                activePeriod = Math.min(6, pNum + 1);
+                activePeriod = pNum;
             }
         }
 
         const targetItem = dayItems.find(it => it.period === activePeriod) || dayItems[0];
         if (targetItem) {
             const targetPage = targetItem.startPage || 1;
-            const targetBookId = targetItem.matchedBookId;
+            const books = (await GetTextbooks()) || [];
+            const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, books);
 
-            showToast(`주학습계획안 반영: ${targetDay}요일 ${targetItem.period}교시 [${targetItem.subject} ${targetPage}쪽]으로 이동합니다.`);
-
-            if (targetBookId && targetBookId === bookId) {
-                const physical = Math.min(Math.max(1, targetPage + pageOffset), numPages);
-                setCurrentPage(physical);
-                setInputPage(targetPage.toString());
-            } else if (targetBookId) {
-                navigate(`/viewer/${encodeURIComponent(targetBookId)}?targetPage=${targetPage}`);
+            if (resolved) {
+                showToast(`주학습계획안 반영: ${targetDay}요일 ${targetItem.period}교시 [${resolved.title} ${targetPage}쪽]으로 이동합니다.`);
+                if (resolved.id === bookId) {
+                    const physical = Math.min(Math.max(1, targetPage + pageOffset), numPages);
+                    setCurrentPage(physical);
+                    setInputPage(targetPage.toString());
+                } else {
+                    navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}`);
+                }
+            } else {
+                showToast(`주학습계획안: ${targetDay}요일 ${targetItem.period}교시 [${targetItem.subject} ${targetPage}쪽] 일치하는 교재를 찾지 못했습니다.`);
             }
         }
     };
@@ -444,7 +505,10 @@ export default function ViewerPage() {
 
             const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
 
-            for (const item of schedules) {
+            for (let i = 0; i < schedules.length; i++) {
+                const item = schedules[i];
+                const periodNum = item.period || parseInt(item.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+
                 if (item.startTime === currentTimeStr) {
                     lastTriggeredMinuteRef.current = currentTimeStr;
                     if (isSoundEnabledRef.current) {
@@ -456,16 +520,32 @@ export default function ViewerPage() {
                     let planItem: main.WeeklyPlanItem | null = null;
                     if (currentPlanRef.current?.schedule && dayOfWeek !== '일' && dayOfWeek !== '토') {
                         const dayItems = currentPlanRef.current.schedule[dayOfWeek] || [];
-                        const periodNum = item.period || parseInt(item.name.replace(/[^0-9]/g, ''), 10) || 1;
-                        planItem = dayItems.find(it => it.period === periodNum) || null;
+                        planItem = dayItems.find(it => it.period === periodNum) || dayItems[periodNum - 1] || dayItems[0] || null;
+                    }
+
+                    // 수업 시작 시: 과목 페이지가 자동으로 뜨도록 즉시 이동!
+                    if (planItem) {
+                        const targetPage = planItem.startPage || 1;
+                        GetTextbooks().then(books => {
+                            const resolved = resolveBookForSubject(planItem!.subject, planItem!.matchedBookId, books || []);
+                            if (resolved) {
+                                if (resolved.id === bookId) {
+                                    const physical = Math.min(Math.max(1, targetPage + pageOffset), numPages);
+                                    setCurrentPage(physical);
+                                    setInputPage(targetPage.toString());
+                                } else {
+                                    navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}`);
+                                }
+                            }
+                        });
                     }
 
                     setAlertData({
                         isOpen: true,
                         isRestTime: false,
-                        periodName: item.name,
+                        periodName: item.name || `${periodNum}교시`,
                         periodTime: `${item.startTime} ~ ${item.endTime}`,
-                        customMessage: item.startMessage || "수업을 시작합니다! 자리에 앉아주세요.",
+                        customMessage: item.startMessage || `${periodNum}교시 수업을 시작합니다! 자리에 앉아주세요.`,
                         item: planItem
                     });
 
@@ -480,12 +560,13 @@ export default function ViewerPage() {
                         else playMusic(alarmLoopRef.current);
                     }
 
+                    // 수업 마칠 때 (쉬는 시간 시작): "쉬는 시간입니다" 기본 문구
                     setAlertData({
                         isOpen: true,
                         isRestTime: true,
-                        periodName: item.name,
+                        periodName: item.name || `${periodNum}교시`,
                         periodTime: item.endTime,
-                        customMessage: item.restMessage || "즐거운 쉬는 시간입니다! 다음 교재를 준비하고 화장실에 다녀오세요.",
+                        customMessage: item.restMessage || "쉬는 시간입니다",
                         item: null
                     });
 
@@ -498,7 +579,7 @@ export default function ViewerPage() {
 
         const interval = setInterval(checkSchedule, 1000);
         return () => clearInterval(interval);
-    }, [schedules, isTimerModalOpen, isScheduleModalOpen]);
+    }, [schedules, isTimerModalOpen, isScheduleModalOpen, bookId, pageOffset, numPages, navigate]);
 
     useEffect(() => {
         if (isTimerRunning) {
@@ -1323,16 +1404,6 @@ export default function ViewerPage() {
                         <span className="text-[10px] font-bold mt-0.5 leading-none">목록</span>
                     </button>
 
-                    {/* 시종 시간 입력 */}
-                    <button
-                        onClick={() => setIsScheduleModalOpen(true)}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-amber-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
-                        title="시종 시간 및 쉬는 시간 문구 설정"
-                    >
-                        <Bell className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] font-bold mt-0.5 leading-none">시종</span>
-                    </button>
-
                     {/* 계획안 */}
                     <button
                         onClick={() => setIsWeeklyPlanModalOpen(true)}
@@ -1468,15 +1539,6 @@ export default function ViewerPage() {
                         <span className="text-[10px] font-bold mt-0.5 leading-none">목록</span>
                     </button>
 
-                    {/* 시종 시간 입력 */}
-                    <button
-                        onClick={() => setIsScheduleModalOpen(true)}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-amber-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
-                        title="시종 시간 및 쉬는 시간 문구 설정"
-                    >
-                        <Bell className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] font-bold mt-0.5 leading-none">시종</span>
-                    </button>
 
                     {/* 계획안 */}
                     <button

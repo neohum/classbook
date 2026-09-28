@@ -24,7 +24,7 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.1"
+const AppVersion = "1.2.2"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"

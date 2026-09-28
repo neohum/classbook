@@ -75,10 +75,10 @@ export default function WeeklyPlanAlertModal({
                 {isRestTime ? (
                     <div className="mb-6">
                         <h3 className="text-3xl font-extrabold text-amber-300 mb-3 tracking-tight">
-                            {periodName} 쉬는 시간입니다!
+                            쉬는 시간입니다
                         </h3>
                         <p className="text-slate-200 text-lg font-medium px-4 leading-relaxed bg-amber-950/40 border border-amber-800/40 rounded-2xl py-4">
-                            {customMessage || "즐거운 쉬는 시간입니다! 다음 시간 교재를 미리 준비하고 화장실에 다녀오세요."}
+                            {customMessage || "쉬는 시간입니다"}
                         </p>
                     </div>
                 ) : (
