@@ -1,28 +1,29 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen, Minus, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen, Minus, Calendar, Coffee, Sparkles } from 'lucide-react';
 import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, WindowMinimise, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatchFolder, UpdateBookOffset } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal from '../components/WeeklyPlanScheduleModal';
 
-interface ScheduleItem {
+export interface ScheduleItem {
     id: string;
+    period?: number;
     name: string;
     startTime: string;
     endTime: string;
+    startMessage: string;
+    restMessage: string;
 }
 
 const defaultSchedule: ScheduleItem[] = [
-    { id: '1', name: '등교 및 아침 활동', startTime: '08:40', endTime: '08:55' },
-    { id: '2', name: '1교시', startTime: '09:00', endTime: '09:40' },
-    { id: '3', name: '2교시', startTime: '09:50', endTime: '10:30' },
-    { id: '4', name: '3교시', startTime: '10:40', endTime: '11:20' },
-    { id: '5', name: '4교시', startTime: '11:30', endTime: '12:10' },
-    { id: '6', name: '점심시간', startTime: '12:10', endTime: '13:00' },
-    { id: '7', name: '5교시', startTime: '13:00', endTime: '13:40' },
-    { id: '8', name: '6교시', startTime: '13:50', endTime: '14:30' },
+    { id: '1', period: 1, name: '1교시', startTime: '09:00', endTime: '09:40', startMessage: '1교시 수업을 시작합니다. 자리에 바르게 앉아주세요!', restMessage: '1교시 쉬는 시간입니다! 다음 교재를 준비하고 화장실에 다녀오세요.' },
+    { id: '2', period: 2, name: '2교시', startTime: '09:50', endTime: '10:30', startMessage: '2교시 수업을 시작합니다. 바른 자세로 집중해요.', restMessage: '2교시 쉬는 시간입니다! 다음 시간 교재를 준비해요.' },
+    { id: '3', period: 3, name: '3교시', startTime: '10:40', endTime: '11:20', startMessage: '3교시 수업을 시작합니다.', restMessage: '3교시 쉬는 시간입니다! 다음 시간 교재를 준비해요.' },
+    { id: '4', period: 4, name: '4교시', startTime: '11:30', endTime: '12:10', startMessage: '4교시 수업을 시작합니다.', restMessage: '맛있는 점심시간입니다! 손을 깨끗이 씻고 질서를 지켜 식사해요.' },
+    { id: '5', period: 5, name: '5교시', startTime: '13:00', endTime: '13:40', startMessage: '5교시 오후 수업을 시작합니다.', restMessage: '5교시 쉬는 시간입니다! 다음 시간 교재를 준비해요.' },
+    { id: '6', period: 6, name: '6교시', startTime: '13:50', endTime: '14:30', startMessage: '6교시 수업을 시작합니다.', restMessage: '오늘 모든 수업이 끝났습니다! 주변을 정리하고 안전하게 하교해요.' },
 ];
 
 let sharedAudioContext: AudioContext | null = null;
@@ -201,13 +202,39 @@ export default function ViewerPage() {
 
     // Weekly Plan States
     const [currentPlan, setCurrentPlan] = useState<main.WeeklyPlanResult | null>(null);
+    const currentPlanRef = useRef<main.WeeklyPlanResult | null>(null);
     const [watchFolder, setWatchFolder] = useState<string>('');
     const [isWeeklyPlanModalOpen, setIsWeeklyPlanModalOpen] = useState<boolean>(false);
-    const [isClassAlertOpen, setIsClassAlertOpen] = useState<boolean>(false);
-    const [alertPeriod, setAlertPeriod] = useState<number>(1);
-    const [alertPeriodTime, setAlertPeriodTime] = useState<string>('');
-    const [alertItem, setAlertItem] = useState<main.WeeklyPlanItem | null>(null);
-    const lastClassAlertMinuteRef = useRef<string>('');
+
+    // Unified Alert Data (Class Start & Rest Time)
+    const [alertData, setAlertData] = useState<{
+        isOpen: boolean;
+        isRestTime: boolean;
+        periodName: string;
+        periodTime: string;
+        customMessage: string;
+        item: main.WeeklyPlanItem | null;
+    }>({
+        isOpen: false,
+        isRestTime: false,
+        periodName: '',
+        periodTime: '',
+        customMessage: '',
+        item: null
+    });
+
+    // Toast Message
+    const [toastMessage, setToastMessage] = useState<string>('');
+    const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const showToast = (msg: string) => {
+        setToastMessage(msg);
+        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = setTimeout(() => setToastMessage(''), 3500);
+    };
+
+    useEffect(() => {
+        currentPlanRef.current = currentPlan;
+    }, [currentPlan]);
 
     useEffect(() => {
         if (bookId) {
@@ -223,7 +250,10 @@ export default function ViewerPage() {
     // Load initial weekly plan and watch folder
     useEffect(() => {
         GetLatestWeeklyPlan().then(plan => {
-            if (plan && plan.success) setCurrentPlan(plan);
+            if (plan && plan.success) {
+                setCurrentPlan(plan);
+                currentPlanRef.current = plan;
+            }
         }).catch(console.error);
 
         GetWatchFolder().then(folder => {
@@ -233,12 +263,14 @@ export default function ViewerPage() {
         const handlePlanUpdate = (plan: main.WeeklyPlanResult) => {
             if (plan && plan.success) {
                 setCurrentPlan(plan);
+                currentPlanRef.current = plan;
+                applyWeeklyPlanNow(plan);
             }
         };
 
         EventsOn('weekly-plan-updated', handlePlanUpdate);
         return () => EventsOff('weekly-plan-updated');
-    }, []);
+    }, [bookId, numPages, pageOffset]);
 
     const handleOffsetChange = (newPrintedPage: number) => {
         if (isNaN(newPrintedPage)) return;
@@ -314,10 +346,25 @@ export default function ViewerPage() {
     const [isAlarmRinging, setIsAlarmRinging] = useState(false);
 
     // Schedule State
-    const [schedules, setSchedules] = useState<ScheduleItem[]>(defaultSchedule);
+    const [schedules, setSchedules] = useState<ScheduleItem[]>(() => {
+        try {
+            const saved = localStorage.getItem('classbook_schedule_v3');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (e) { }
+        return defaultSchedule;
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('classbook_schedule_v3', JSON.stringify(schedules));
+        } catch (e) { }
+    }, [schedules]);
+
     const [isScheduleEnabled, setIsScheduleEnabled] = useState(true);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-    const [scheduleAlarmMessage, setScheduleAlarmMessage] = useState("");
     const lastTriggeredMinuteRef = React.useRef("");
 
     const isSoundEnabledRef = React.useRef(isSoundEnabled);
@@ -332,6 +379,59 @@ export default function ViewerPage() {
         isScheduleEnabledRef.current = isScheduleEnabled;
     }, [isSoundEnabled, alarmType, alarmLoop, isScheduleEnabled]);
 
+    const openSettings = async () => {
+        try {
+            const version = await GetAppVersion();
+            setAppVersion(version);
+        } catch (e) { console.error(e); }
+        setIsSettingsOpen(true);
+    };
+
+    const applyWeeklyPlanNow = (plan: main.WeeklyPlanResult) => {
+        if (!plan || !plan.success || !plan.schedule) return;
+
+        const now = new Date();
+        const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+        const targetDay = (dayOfWeek === '일' || dayOfWeek === '토') ? '월' : dayOfWeek;
+        const dayItems = plan.schedule[targetDay] || [];
+        if (dayItems.length === 0) return;
+
+        const hh = now.getHours().toString().padStart(2, '0');
+        const mm = now.getMinutes().toString().padStart(2, '0');
+        const currentTimeStr = `${hh}:${mm}`;
+
+        // Find active or upcoming period
+        let activePeriod = 1;
+        for (const s of schedules) {
+            const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || 1;
+            if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
+                activePeriod = pNum;
+                break;
+            } else if (currentTimeStr < s.startTime) {
+                activePeriod = pNum;
+                break;
+            } else if (currentTimeStr > s.endTime) {
+                activePeriod = Math.min(6, pNum + 1);
+            }
+        }
+
+        const targetItem = dayItems.find(it => it.period === activePeriod) || dayItems[0];
+        if (targetItem) {
+            const targetPage = targetItem.startPage || 1;
+            const targetBookId = targetItem.matchedBookId;
+
+            showToast(`주학습계획안 반영: ${targetDay}요일 ${targetItem.period}교시 [${targetItem.subject} ${targetPage}쪽]으로 이동합니다.`);
+
+            if (targetBookId && targetBookId === bookId) {
+                const physical = Math.min(Math.max(1, targetPage + pageOffset), numPages);
+                setCurrentPage(physical);
+                setInputPage(targetPage.toString());
+            } else if (targetBookId) {
+                navigate(`/viewer/${encodeURIComponent(targetBookId)}?targetPage=${targetPage}`);
+            }
+        }
+    };
+
     useEffect(() => {
         const checkSchedule = () => {
             const now = new Date();
@@ -342,28 +442,53 @@ export default function ViewerPage() {
             if (lastTriggeredMinuteRef.current === currentTimeStr) return;
             if (!isScheduleEnabledRef.current) return;
 
+            const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+
             for (const item of schedules) {
                 if (item.startTime === currentTimeStr) {
                     lastTriggeredMinuteRef.current = currentTimeStr;
-                    setScheduleAlarmMessage(`${item.name} 시작 시간입니다!`);
-                    setIsAlarmRinging(true);
                     if (isSoundEnabledRef.current) {
                         initAudioContext();
                         if (alarmTypeRef.current === 'beep') playBeep(alarmLoopRef.current);
                         else playMusic(alarmLoopRef.current);
                     }
+
+                    let planItem: main.WeeklyPlanItem | null = null;
+                    if (currentPlanRef.current?.schedule && dayOfWeek !== '일' && dayOfWeek !== '토') {
+                        const dayItems = currentPlanRef.current.schedule[dayOfWeek] || [];
+                        const periodNum = item.period || parseInt(item.name.replace(/[^0-9]/g, ''), 10) || 1;
+                        planItem = dayItems.find(it => it.period === periodNum) || null;
+                    }
+
+                    setAlertData({
+                        isOpen: true,
+                        isRestTime: false,
+                        periodName: item.name,
+                        periodTime: `${item.startTime} ~ ${item.endTime}`,
+                        customMessage: item.startMessage || "수업을 시작합니다! 자리에 앉아주세요.",
+                        item: planItem
+                    });
+
                     if (isTimerModalOpen) setIsTimerModalOpen(false);
                     if (isScheduleModalOpen) setIsScheduleModalOpen(false);
                     return;
                 } else if (item.endTime === currentTimeStr) {
                     lastTriggeredMinuteRef.current = currentTimeStr;
-                    setScheduleAlarmMessage(`${item.name} 쉬는 시간입니다!`);
-                    setIsAlarmRinging(true);
                     if (isSoundEnabledRef.current) {
                         initAudioContext();
                         if (alarmTypeRef.current === 'beep') playBeep(alarmLoopRef.current);
                         else playMusic(alarmLoopRef.current);
                     }
+
+                    setAlertData({
+                        isOpen: true,
+                        isRestTime: true,
+                        periodName: item.name,
+                        periodTime: item.endTime,
+                        customMessage: item.restMessage || "즐거운 쉬는 시간입니다! 다음 교재를 준비하고 화장실에 다녀오세요.",
+                        item: null
+                    });
+
                     if (isTimerModalOpen) setIsTimerModalOpen(false);
                     if (isScheduleModalOpen) setIsScheduleModalOpen(false);
                     return;
@@ -566,80 +691,164 @@ export default function ViewerPage() {
 
     const renderScheduleModal = () => {
         if (!isScheduleModalOpen) return null;
-        if (isAlarmRinging) return null;
 
         return (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-auto">
-                <div className="bg-slate-800/95 border border-slate-600 rounded-3xl shadow-2xl flex flex-col p-8 w-[90vw] max-w-3xl max-h-[85vh]">
-                    <div className="flex w-full items-center justify-between mb-6">
-                        <span className="text-white text-2xl font-bold flex items-center gap-2">
-                            <CalendarDays className="w-8 h-8 text-violet-400" /> 시종 시간표 설정
-                        </span>
-                        <div className="flex items-center gap-4">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto p-4">
+                <div className="bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl flex flex-col p-6 sm:p-8 w-full max-w-4xl max-h-[90vh]">
+                    <div className="flex w-full items-center justify-between mb-6 pb-4 border-b border-slate-800">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-violet-600/20 text-violet-400 rounded-2xl border border-violet-500/30">
+                                <CalendarDays className="w-7 h-7" />
+                            </div>
+                            <div>
+                                <h2 className="text-white text-2xl font-black">시종 시간 및 알림 문구 설정</h2>
+                                <p className="text-xs text-slate-400">교시별 시간 및 시작/쉬는 시간에 표시될 알림 문구를 직접 입력하고 관리합니다.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
                             <button
                                 onClick={() => setIsScheduleEnabled(!isScheduleEnabled)}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors font-medium border ${isScheduleEnabled ? 'bg-violet-600/20 text-violet-300 border-violet-500/50' : 'bg-slate-800 text-slate-400 border-slate-600 hover:text-white hover:bg-slate-700'}`}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all font-semibold border ${isScheduleEnabled ? 'bg-violet-600 text-white border-violet-500 shadow-md shadow-violet-600/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
                                 title="시종 알림 켜기/끄기"
                             >
-                                {isScheduleEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
-                                <span>{isScheduleEnabled ? '알림 켜짐' : '알림 꺼짐'}</span>
+                                {isScheduleEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                                <span>{isScheduleEnabled ? '시종 알림 켜짐' : '시종 알림 꺼짐'}</span>
                             </button>
-                            <button onClick={() => setIsScheduleModalOpen(false)} className="text-slate-400 hover:text-white transition-colors p-2 rounded-full hover:bg-slate-700">
+                            <button
+                                onClick={() => setIsScheduleModalOpen(false)}
+                                className="text-slate-400 hover:text-white transition-colors p-2 rounded-full hover:bg-slate-800"
+                                title="닫기"
+                            >
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
                     </div>
 
-                    <div className="flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar">
-                        {schedules.map(schedule => (
-                            <div key={schedule.id} className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                                <input
-                                    type="text"
-                                    value={schedule.name}
-                                    onChange={(e) => {
-                                        setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, name: e.target.value } : s));
-                                    }}
-                                    className="bg-transparent text-white font-bold text-lg w-full sm:w-40 border-b border-transparent focus:border-violet-500 outline-none transition-colors"
-                                    placeholder="이름 (예: 1교시)"
-                                />
-                                <div className="hidden sm:block w-px h-6 bg-slate-700 mx-2" />
-                                <div className="flex items-center gap-2 w-full sm:w-auto">
-                                    <input
-                                        type="time"
-                                        value={schedule.startTime}
-                                        onChange={(e) => {
-                                            setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, startTime: e.target.value } : s));
-                                        }}
-                                        className="bg-slate-800 text-white rounded-lg px-3 py-1.5 border border-slate-700 focus:border-violet-500 outline-none flex-1 sm:flex-none"
-                                    />
-                                    <span className="text-slate-400 font-bold">-</span>
-                                    <input
-                                        type="time"
-                                        value={schedule.endTime}
-                                        onChange={(e) => {
-                                            setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, endTime: e.target.value } : s));
-                                        }}
-                                        className="bg-slate-800 text-white rounded-lg px-3 py-1.5 border border-slate-700 focus:border-violet-500 outline-none flex-1 sm:flex-none"
-                                    />
+                    <div className="flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar flex-1 mb-4">
+                        {schedules.map((schedule, idx) => (
+                            <div key={schedule.id} className="bg-slate-800/80 p-5 rounded-2xl border border-slate-700/80 shadow-md flex flex-col gap-3">
+                                <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3 flex-1">
+                                        <span className="w-7 h-7 rounded-lg bg-violet-900/50 border border-violet-700/50 text-violet-300 font-bold text-sm flex items-center justify-center">
+                                            {idx + 1}
+                                        </span>
+                                        <input
+                                            type="text"
+                                            value={schedule.name}
+                                            onChange={(e) => {
+                                                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, name: e.target.value } : s));
+                                            }}
+                                            className="bg-slate-900 text-white font-bold text-lg px-3 py-1.5 rounded-xl border border-slate-700 focus:border-violet-500 outline-none w-36"
+                                            placeholder="이름 (예: 1교시)"
+                                        />
+                                        <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-700">
+                                            <Clock className="w-4 h-4 text-slate-400" />
+                                            <input
+                                                type="time"
+                                                value={schedule.startTime}
+                                                onChange={(e) => {
+                                                    setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, startTime: e.target.value } : s));
+                                                }}
+                                                className="bg-transparent text-white font-mono font-bold outline-none text-sm"
+                                            />
+                                            <span className="text-slate-500 font-bold">~</span>
+                                            <input
+                                                type="time"
+                                                value={schedule.endTime}
+                                                onChange={(e) => {
+                                                    setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, endTime: e.target.value } : s));
+                                                }}
+                                                className="bg-transparent text-white font-mono font-bold outline-none text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setSchedules(prev => prev.filter(s => s.id !== schedule.id))}
+                                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition-colors"
+                                        title="이 교시 삭제"
+                                    >
+                                        <Trash2 className="w-5 h-5" />
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={() => setSchedules(prev => prev.filter(s => s.id !== schedule.id))}
-                                    className="ml-auto p-2 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
-                                    title="삭제"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                </button>
+
+                                {/* 문구 설정 행 */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-700/40">
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-violet-300 flex items-center gap-1.5">
+                                            <Bell className="w-3.5 h-3.5" />
+                                            수업 시작 알림 문구:
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={schedule.startMessage || ""}
+                                            onChange={(e) => {
+                                                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, startMessage: e.target.value } : s));
+                                            }}
+                                            placeholder="수업 시작 시 화면에 표시될 문구 입력"
+                                            className="bg-slate-900 text-slate-200 text-sm px-3 py-2 rounded-xl border border-slate-700 focus:border-violet-500 outline-none placeholder:text-slate-500"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                                            <Coffee className="w-3.5 h-3.5" />
+                                            쉬는 시간 알림 문구:
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={schedule.restMessage || ""}
+                                            onChange={(e) => {
+                                                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, restMessage: e.target.value } : s));
+                                            }}
+                                            placeholder="쉬는 시간이 되었을 때 화면에 표시될 문구 입력"
+                                            className="bg-slate-900 text-slate-200 text-sm px-3 py-2 rounded-xl border border-slate-700 focus:border-amber-500 outline-none placeholder:text-slate-500"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-800">
                         <button
                             onClick={() => {
+                                const newIdx = schedules.length + 1;
                                 const newId = Math.random().toString(36).substr(2, 9);
-                                setSchedules([...schedules, { id: newId, name: '새 일정', startTime: '00:00', endTime: '00:00' }]);
+                                setSchedules([
+                                    ...schedules,
+                                    {
+                                        id: newId,
+                                        period: newIdx,
+                                        name: `${newIdx}교시`,
+                                        startTime: '14:40',
+                                        endTime: '15:20',
+                                        startMessage: `${newIdx}교시 수업을 시작합니다.`,
+                                        restMessage: `${newIdx}교시 쉬는 시간입니다.`
+                                    }
+                                ]);
                             }}
-                            className="flex items-center justify-center gap-2 w-full py-4 mt-2 border-2 border-dashed border-slate-700 hover:border-violet-500 hover:bg-violet-500/10 text-slate-400 hover:text-violet-300 rounded-xl transition-all font-medium"
+                            className="flex items-center gap-2 px-5 py-3 border border-dashed border-violet-500/50 hover:border-violet-500 hover:bg-violet-500/10 text-violet-300 rounded-xl transition-all font-semibold text-sm"
                         >
-                            <Plus className="w-5 h-5" /> 새 시간 추가
+                            <Plus className="w-4 h-4" /> 새 교시/일정 추가
                         </button>
+
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => {
+                                    if (confirm('시종 시간표를 기본값으로 되돌리시겠습니까?')) {
+                                        setSchedules(defaultSchedule);
+                                    }
+                                }}
+                                className="px-4 py-2.5 text-slate-400 hover:text-slate-200 text-sm transition-colors"
+                            >
+                                기본값 복원
+                            </button>
+                            <button
+                                onClick={() => setIsScheduleModalOpen(false)}
+                                className="px-6 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl shadow-lg shadow-violet-600/30 transition-all text-sm"
+                            >
+                                저장 및 닫기
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -980,53 +1189,9 @@ export default function ViewerPage() {
         setCurrentPage(prev => Math.max(1, prev - 1));
     };
 
-    // Time-based Class Alert Checker inside ViewerPage
-    useEffect(() => {
-        const checkClassTime = () => {
-            if (!currentPlan || !currentPlan.schedule) return;
-
-            const now = new Date();
-            const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
-            if (dayOfWeek === '일' || dayOfWeek === '토') return;
-
-            const hh = now.getHours().toString().padStart(2, '0');
-            const mm = now.getMinutes().toString().padStart(2, '0');
-            const currentTimeStr = `${hh}:${mm}`;
-
-            if (lastClassAlertMinuteRef.current === currentTimeStr) return;
-
-            const periods = [
-                { period: 1, startTime: '09:00', endTime: '09:40' },
-                { period: 2, startTime: '09:50', endTime: '10:30' },
-                { period: 3, startTime: '10:40', endTime: '11:20' },
-                { period: 4, startTime: '11:30', endTime: '12:10' },
-                { period: 5, startTime: '13:00', endTime: '13:40' },
-                { period: 6, startTime: '13:50', endTime: '14:30' },
-            ];
-
-            for (const sched of periods) {
-                if (sched.startTime === currentTimeStr) {
-                    lastClassAlertMinuteRef.current = currentTimeStr;
-                    const dayItems = currentPlan.schedule[dayOfWeek] || [];
-                    const foundItem = dayItems.find(it => it.period === sched.period);
-
-                    if (foundItem) {
-                        setAlertPeriod(sched.period);
-                        setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
-                        setAlertItem(foundItem);
-                        setIsClassAlertOpen(true);
-                    }
-                    break;
-                }
-            }
-        };
-
-        const timer = setInterval(checkClassTime, 1000);
-        return () => clearInterval(timer);
-    }, [currentPlan]);
-
     const handleGoToWeeklyBook = (targetBookId: string, targetPrintedPage: number) => {
-        setIsClassAlertOpen(false);
+        stopAllAudio();
+        setAlertData(prev => ({ ...prev, isOpen: false }));
         setIsWeeklyPlanModalOpen(false);
 
         if (targetBookId === bookId || !targetBookId) {
@@ -1089,34 +1254,18 @@ export default function ViewerPage() {
 
     return (
         <div className="h-screen w-screen overflow-hidden bg-slate-950 text-slate-200 flex flex-col font-sans">
-            {/* Top Navigation - Custom Title Bar Dragging */}
+            {/* Top Navigation - Subject Name and Page Number ONLY */}
             <header
                 onPointerDown={handleHeaderPointerDown}
                 style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                className="h-16 flex-shrink-0 border-b border-slate-800 flex items-center justify-between px-4 sm:px-6 bg-slate-900/80 backdrop-blur-md z-50 touch-none select-none cursor-move"
+                className="h-16 flex-shrink-0 border-b border-slate-800 flex items-center justify-center px-4 bg-slate-900/90 backdrop-blur-md z-40 touch-none select-none cursor-move relative"
             >
-                <button
-                    onClick={goBack}
-                    className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                >
-                    <Home className="w-5 h-5" />
-                    <span className="font-medium hidden sm:inline">목록으로</span>
-                </button>
-
-                <div className="flex items-center gap-4 sm:gap-6">
-                    <div
-                        onClick={() => setIsInfoModalOpen(true)}
-                        className="font-semibold text-white tracking-wide text-base sm:text-lg flex items-center cursor-pointer hover:text-violet-400 transition-colors group"
-                        title="단원/페이지 정보 보기"
-                    >
-                        {bookId}
-                        <BookOpen className="w-4 h-4 ml-2 opacity-50 group-hover:opacity-100 transition-opacity" />
-                    </div>
-
-
-                    {/* Page Input Form */}
-                    <form onSubmit={handlePageSubmit} className="flex items-center bg-slate-800 rounded-full border border-slate-700 overflow-hidden px-2 py-1 hidden sm:flex">
-                        <span className="text-xs text-slate-400 px-2 select-none">쪽:</span>
+                <div className="flex items-center gap-4">
+                    <span className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow">
+                        {bookId || '교과서'}
+                    </span>
+                    <span className="text-violet-400 font-extrabold text-xl sm:text-2xl select-none">|</span>
+                    <form onSubmit={handlePageSubmit} className="flex items-center gap-1.5 bg-slate-800/90 px-3.5 py-1.5 rounded-full border border-slate-700/80 shadow-inner">
                         <input
                             type="number"
                             min="1"
@@ -1124,82 +1273,17 @@ export default function ViewerPage() {
                             value={inputPage}
                             onChange={(e) => setInputPage(e.target.value)}
                             onBlur={handlePageSubmit}
-                            className="bg-transparent text-white text-sm w-12 text-center outline-none"
-                            aria-label="이동할 페이지 입력"
+                            className="bg-transparent text-violet-300 font-black text-2xl sm:text-3xl w-16 text-center outline-none"
+                            aria-label="이동할 쪽수"
                         />
-                        <span className="text-xs text-slate-500 pr-2 select-none">/ {numPages}</span>
+                        <span className="text-lg sm:text-xl font-bold text-slate-300 select-none">쪽</span>
+                        <span className="text-xs text-slate-500 select-none ml-1">/ {numPages}</span>
                     </form>
-
-                    {renderTimerButton('top')}
-
-                    {/* Weekly Plan Schedule Button */}
-                    <button
-                        onClick={() => setIsWeeklyPlanModalOpen(true)}
-                        className="p-1.5 sm:p-2 bg-slate-800 border-slate-700 hover:border-violet-500 text-slate-300 hover:text-white rounded-full border transition-colors flex items-center gap-1 cursor-pointer"
-                        title="주학습 계획안 보기"
-                    >
-                        <Calendar className="w-4 h-4 text-violet-400" />
-                        <span className="text-xs font-semibold hidden md:inline px-1">계획안</span>
-                    </button>
-
-                    {/* Pen Tool Launch */}
-                    <button
-                        onClick={toggleDrawingMode}
-                        className={`p-1.5 sm:p-2 rounded-full border transition-colors ${isDrawingMode ? 'bg-violet-600 border-violet-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700'}`}
-                        title="판서 모드 토글"
-                        aria-label="판서 모드 토글"
-                    >
-                        <PenTool className="w-4 h-4" />
-                    </button>
-
-                    {/* Minimize Button */}
-                    <button
-                        onClick={WindowMinimise}
-                        className="p-1.5 sm:p-2 bg-slate-800 text-slate-400 hover:text-white rounded-full border border-slate-700 hover:bg-slate-700 transition-colors ml-2"
-                        title="최소화"
-                        aria-label="최소화"
-                    >
-                        <Minus className="w-4 h-4" />
-                    </button>
-
-                    {/* Fullscreen Toggle */}
-                    <button
-                        onClick={toggleFullscreen}
-                        className="p-1.5 sm:p-2 bg-slate-800 text-slate-400 hover:text-white rounded-full border border-slate-700 hover:bg-slate-700 transition-colors ml-2"
-                        aria-label={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
-                    >
-                        {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-                    </button>
-
-                    {/* Exit Button */}
-                    <button
-                        onClick={Quit}
-                        className="p-1.5 sm:p-2 bg-slate-800 text-slate-400 hover:text-red-500 hover:bg-red-900/40 rounded-full border border-slate-700 transition-colors ml-2"
-                        title="프로그램 종료"
-                        aria-label="종료"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
-
-                    {/* Settings Button */}
-                    <button
-                        onClick={async () => {
-                            try {
-                                const version = await GetAppVersion();
-                                setAppVersion(version);
-                            } catch (e) { console.error(e); }
-                            setIsSettingsOpen(true);
-                        }}
-                        className="p-1.5 sm:p-2 bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full border border-slate-700 transition-colors ml-2"
-                        title="설정"
-                        aria-label="설정"
-                    >
-                        <Settings className="w-4 h-4" />
-                    </button>
-                </div>
-
-                <div className="text-xs sm:text-sm font-medium text-slate-400 bg-slate-800 px-3 py-1 sm:py-1.5 rounded-full border border-slate-700 select-none hidden md:block">
-                    <span className="text-white">{leftPage}</span> {rightPage ? <span className="text-slate-500">/ <span className="text-white">{rightPage}</span></span> : ''}
+                    {rightPage && (
+                        <span className="text-sm font-semibold text-slate-400 hidden md:inline ml-2">
+                            ({getPrintedPage(leftPage)} ~ {getPrintedPage(rightPage)}쪽 펼침)
+                        </span>
+                    )}
                 </div>
             </header>
 
@@ -1211,7 +1295,7 @@ export default function ViewerPage() {
             >
                 {/* Left Side Controls */}
                 <div
-                    className="absolute z-50 flex flex-col gap-3"
+                    className="absolute z-50 flex flex-col gap-2.5 items-center pointer-events-auto"
                     style={{
                         left: `${vp.x + 16}px`,
                         top: `${vp.y + vp.h / 2}px`,
@@ -1219,31 +1303,82 @@ export default function ViewerPage() {
                         transformOrigin: 'left center'
                     }}
                 >
+                    {/* 이전 페이지 */}
                     <button
                         onClick={goToPrevPage}
                         disabled={currentPage <= 1}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-violet-600/80 backdrop-blur disabled:opacity-0 disabled:pointer-events-none text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
-                        aria-label="이전 페이지"
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600/90 backdrop-blur disabled:opacity-20 disabled:pointer-events-none text-white rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10"
+                        title="이전 쪽"
                     >
-                        <ChevronLeft className="w-8 h-8 -ml-1" />
+                        <ChevronLeft className="w-8 h-8 -ml-0.5" />
                     </button>
+
+                    {/* 목록으로 */}
+                    <button
+                        onClick={goBack}
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-slate-200 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        title="목록으로"
+                    >
+                        <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[10px] font-bold mt-0.5 leading-none">목록</span>
+                    </button>
+
+                    {/* 시종 시간 입력 */}
+                    <button
+                        onClick={() => setIsScheduleModalOpen(true)}
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-amber-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        title="시종 시간 및 쉬는 시간 문구 설정"
+                    >
+                        <Bell className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[10px] font-bold mt-0.5 leading-none">시종</span>
+                    </button>
+
+                    {/* 계획안 */}
+                    <button
+                        onClick={() => setIsWeeklyPlanModalOpen(true)}
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-violet-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        title="주학습 계획안 보기"
+                    >
+                        <Calendar className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[10px] font-bold mt-0.5 leading-none">계획안</span>
+                    </button>
+
+                    {/* 설정 */}
+                    <button
+                        onClick={openSettings}
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-slate-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        title="설정"
+                    >
+                        <Settings className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[10px] font-bold mt-0.5 leading-none">설정</span>
+                    </button>
+
+                    <div className="w-8 h-px bg-slate-700/60 my-0.5" />
 
                     {/* Info Button */}
                     <button
                         onClick={() => setIsInfoModalOpen(true)}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
-                        title="단원/페이지 정보"
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10"
+                        title="단원/쪽수 정보"
                     >
                         <BookOpen className="w-6 h-6" />
                     </button>
 
-                    {/* Additional Left Controls */}
-                    {renderTimerButton('left')}
+                    {/* 타이머 */}
+                    <button
+                        onClick={() => setIsTimerModalOpen(!isTimerModalOpen)}
+                        className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 ${timerSeconds > 0 || isTimerModalOpen ? 'bg-violet-600 text-white' : 'bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                        title="수업 타이머"
+                    >
+                        <Clock className={timerSeconds > 0 ? "w-4 h-4 mb-0.5" : "w-6 h-6"} />
+                        {timerSeconds > 0 && <span className="text-[10px] font-mono font-bold leading-none">{formatTime(timerSeconds)}</span>}
+                    </button>
 
+                    {/* 판서 모드 토글 */}
                     <div className="relative flex items-center">
                         <button
                             onClick={toggleDrawingMode}
-                            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto ${isDrawingMode ? 'bg-violet-600/90 text-white' : 'bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                            className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10 ${isDrawingMode ? 'bg-violet-600 text-white' : 'bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
                             title="판서 모드 토글"
                         >
                             <PenTool className="w-6 h-6" />
@@ -1268,26 +1403,30 @@ export default function ViewerPage() {
                             </div>
                         )}
                     </div>
+
+                    <div className="w-8 h-px bg-slate-700/60 my-0.5" />
+
+                    {/* Window Controls */}
                     <button
                         onClick={WindowMinimise}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto mt-auto"
+                        className="w-11 h-11 bg-slate-900/80 hover:bg-slate-700/80 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-white/10"
                         title="최소화"
                     >
-                        <Minus className="w-6 h-6" />
+                        <Minus className="w-5 h-5" />
                     </button>
                     <button
                         onClick={toggleFullscreen}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto mt-2"
+                        className="w-11 h-11 bg-slate-900/80 hover:bg-slate-700/80 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-white/10"
                         title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
                     >
-                        {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
+                        {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
                     </button>
                     <button
                         onClick={Quit}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-red-900/80 text-slate-300 hover:text-red-400 rounded-full flex items-center justify-center transition-all shadow-xl border border-red-500/20 relative z-50 pointer-events-auto mt-2"
+                        className="w-11 h-11 bg-slate-900/80 hover:bg-red-600/90 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-red-500/20"
                         title="프로그램 종료"
                     >
-                        <X className="w-6 h-6" />
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
 
@@ -1301,7 +1440,7 @@ export default function ViewerPage() {
 
                 {/* Right Side Controls */}
                 <div
-                    className="absolute z-50 flex flex-col gap-3"
+                    className="absolute z-50 flex flex-col gap-2.5 items-center pointer-events-auto"
                     style={{
                         left: `${vp.x + vp.w - 16}px`,
                         top: `${vp.y + vp.h / 2}px`,
@@ -1309,31 +1448,82 @@ export default function ViewerPage() {
                         transformOrigin: 'right center'
                     }}
                 >
+                    {/* 다음 페이지 */}
                     <button
                         onClick={goToNextPage}
                         disabled={rightPage === null || rightPage >= numPages}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-violet-600/80 backdrop-blur disabled:opacity-0 disabled:pointer-events-none text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
-                        aria-label="다음 페이지"
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600/90 backdrop-blur disabled:opacity-20 disabled:pointer-events-none text-white rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10"
+                        title="다음 쪽"
                     >
-                        <ChevronRight className="w-8 h-8 -mr-1" />
+                        <ChevronRight className="w-8 h-8 -mr-0.5" />
                     </button>
+
+                    {/* 목록으로 */}
+                    <button
+                        onClick={goBack}
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-slate-200 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        title="목록으로"
+                    >
+                        <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[10px] font-bold mt-0.5 leading-none">목록</span>
+                    </button>
+
+                    {/* 시종 시간 입력 */}
+                    <button
+                        onClick={() => setIsScheduleModalOpen(true)}
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-amber-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        title="시종 시간 및 쉬는 시간 문구 설정"
+                    >
+                        <Bell className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[10px] font-bold mt-0.5 leading-none">시종</span>
+                    </button>
+
+                    {/* 계획안 */}
+                    <button
+                        onClick={() => setIsWeeklyPlanModalOpen(true)}
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-violet-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        title="주학습 계획안 보기"
+                    >
+                        <Calendar className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[10px] font-bold mt-0.5 leading-none">계획안</span>
+                    </button>
+
+                    {/* 설정 */}
+                    <button
+                        onClick={openSettings}
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-slate-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        title="설정"
+                    >
+                        <Settings className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[10px] font-bold mt-0.5 leading-none">설정</span>
+                    </button>
+
+                    <div className="w-8 h-px bg-slate-700/60 my-0.5" />
 
                     {/* Info Button */}
                     <button
                         onClick={() => setIsInfoModalOpen(true)}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto"
+                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10"
                         title="단원/페이지 정보"
                     >
                         <BookOpen className="w-6 h-6" />
                     </button>
 
-                    {/* Additional Right Controls */}
-                    {renderTimerButton('right')}
+                    {/* 타이머 */}
+                    <button
+                        onClick={() => setIsTimerModalOpen(!isTimerModalOpen)}
+                        className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 ${timerSeconds > 0 || isTimerModalOpen ? 'bg-violet-600 text-white' : 'bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                        title="수업 타이머"
+                    >
+                        <Clock className={timerSeconds > 0 ? "w-4 h-4 mb-0.5" : "w-6 h-6"} />
+                        {timerSeconds > 0 && <span className="text-[10px] font-mono font-bold leading-none">{formatTime(timerSeconds)}</span>}
+                    </button>
 
+                    {/* 판서 모드 토글 */}
                     <div className="relative flex items-center justify-end">
                         <button
                             onClick={toggleDrawingMode}
-                            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto ${isDrawingMode ? 'bg-violet-600/90 text-white' : 'bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                            className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10 ${isDrawingMode ? 'bg-violet-600 text-white' : 'bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
                             title="판서 모드 토글"
                         >
                             <PenTool className="w-6 h-6" />
@@ -1358,26 +1548,30 @@ export default function ViewerPage() {
                             </div>
                         )}
                     </div>
+
+                    <div className="w-8 h-px bg-slate-700/60 my-0.5" />
+
+                    {/* Window Controls */}
                     <button
                         onClick={WindowMinimise}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto mt-auto"
+                        className="w-11 h-11 bg-slate-900/80 hover:bg-slate-700/80 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-white/10"
                         title="최소화"
                     >
-                        <Minus className="w-6 h-6" />
+                        <Minus className="w-5 h-5" />
                     </button>
                     <button
                         onClick={toggleFullscreen}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full flex items-center justify-center transition-all shadow-xl border border-white/10 relative z-50 pointer-events-auto mt-2"
+                        className="w-11 h-11 bg-slate-900/80 hover:bg-slate-700/80 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-white/10"
                         title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
                     >
-                        {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
+                        {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
                     </button>
                     <button
                         onClick={Quit}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/40 hover:bg-red-900/80 text-slate-300 hover:text-red-400 rounded-full flex items-center justify-center transition-all shadow-xl border border-red-500/20 relative z-50 pointer-events-auto mt-2"
+                        className="w-11 h-11 bg-slate-900/80 hover:bg-red-600/90 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-red-500/20"
                         title="프로그램 종료"
                     >
-                        <X className="w-6 h-6" />
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
             </main>
@@ -1509,20 +1703,37 @@ export default function ViewerPage() {
                 plan={currentPlan}
                 watchFolder={watchFolder}
                 onClose={() => setIsWeeklyPlanModalOpen(false)}
-                onPlanUpdated={(newPlan) => setCurrentPlan(newPlan)}
+                onPlanUpdated={(newPlan) => {
+                    setCurrentPlan(newPlan);
+                    currentPlanRef.current = newPlan;
+                    applyWeeklyPlanNow(newPlan);
+                }}
                 onWatchFolderChanged={(newFolder) => setWatchFolder(newFolder)}
                 onGoToBook={handleGoToWeeklyBook}
             />
 
-            {/* Class Period Alert Modal */}
+            {/* Unified Class & Rest Alert Modal */}
             <WeeklyPlanAlertModal
-                isOpen={isClassAlertOpen}
-                period={alertPeriod}
-                periodTime={alertPeriodTime}
-                item={alertItem}
-                onClose={() => setIsClassAlertOpen(false)}
+                isOpen={alertData.isOpen}
+                isRestTime={alertData.isRestTime}
+                periodName={alertData.periodName}
+                periodTime={alertData.periodTime}
+                customMessage={alertData.customMessage}
+                item={alertData.item}
+                onClose={() => {
+                    stopAllAudio();
+                    setAlertData(prev => ({ ...prev, isOpen: false }));
+                }}
                 onGoToBook={handleGoToWeeklyBook}
             />
+
+            {/* Toast Notification */}
+            {toastMessage && (
+                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[10001] bg-violet-600/95 text-white px-6 py-3 rounded-full shadow-2xl backdrop-blur-md border border-violet-400/50 flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-300 font-bold text-base pointer-events-none">
+                    <Sparkles className="w-5 h-5 text-yellow-300 animate-pulse" />
+                    <span>{toastMessage}</span>
+                </div>
+            )}
         </div>
     );
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -20,7 +21,10 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "1.1.0"
+//go:embed parse_weekly_plan.py
+var embeddedWeeklyPlanScript []byte
+
+const AppVersion = "1.2.0"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
 
 type WasabiVersionInfo struct {
@@ -523,14 +527,36 @@ func (a *App) SelectWeeklyPlanFileDialog() (*WeeklyPlanResult, error) {
 
 // ParseWeeklyPlanFile executes the Python script to parse a HWP or HWPX file
 func (a *App) ParseWeeklyPlanFile(filePath string) (*WeeklyPlanResult, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-
+	cwd, _ := os.Getwd()
 	scriptPath := filepath.Join(cwd, "parse_weekly_plan.py")
 
-	cmd := exec.Command("python", scriptPath, filePath)
+	// If script doesn't exist on disk, extract embedded script to temp
+	if _, err := os.Stat(scriptPath); err != nil {
+		tempScript := filepath.Join(os.TempDir(), "classbook_parse_weekly_plan.py")
+		if err := os.WriteFile(tempScript, embeddedWeeklyPlanScript, 0644); err == nil {
+			scriptPath = tempScript
+		}
+	}
+
+	// Try finding python executable (python, py, python3)
+	pyCandidates := []string{"python", "py", "python3"}
+	var chosenCmd string
+	var baseArgs []string
+	for _, cand := range pyCandidates {
+		if path, err := exec.LookPath(cand); err == nil {
+			chosenCmd = path
+			if cand == "py" {
+				baseArgs = []string{"-3"}
+			}
+			break
+		}
+	}
+	if chosenCmd == "" {
+		chosenCmd = "python"
+	}
+
+	args := append(baseArgs, scriptPath, filePath)
+	cmd := exec.Command(chosenCmd, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
 	var outBuf bytes.Buffer
@@ -538,7 +564,7 @@ func (a *App) ParseWeeklyPlanFile(filePath string) (*WeeklyPlanResult, error) {
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
 
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
 		errMsg := errBuf.String()
 		if errMsg == "" {
@@ -604,7 +630,7 @@ func (a *App) loadLatestPlan() (*WeeklyPlanResult, error) {
 
 // startPlanFolderWatcher monitors the designated folder for new or modified hwp/hwpx files
 func (a *App) startPlanFolderWatcher() {
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -644,8 +670,11 @@ func (a *App) startPlanFolderWatcher() {
 
 			// If a new or updated file is detected
 			if latestFile != "" {
-				if latestFile != a.settings.LastPlanFile || latestModTime.After(a.settings.LastPlanModTime) {
+				if latestFile != a.settings.LastPlanFile || latestModTime.Unix() > a.settings.LastPlanModTime.Unix() {
 					fmt.Printf("[FolderWatcher] New plan file detected: %s (mod: %v)\n", latestFile, latestModTime)
+
+					// Allow file copying to complete
+					time.Sleep(300 * time.Millisecond)
 
 					result, err := a.ParseWeeklyPlanFile(latestFile)
 					if err == nil && result.Success {

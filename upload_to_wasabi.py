@@ -34,7 +34,7 @@ def main():
         print("Error: Wasabi access key or secret key missing in .env")
         sys.exit(1)
 
-    installer_name = "classbook-setup-v1.1.0.exe"
+    installer_name = "classbook-setup-v1.2.0.exe"
     local_installer = os.path.join("build", "bin", installer_name)
     if not os.path.exists(local_installer):
         print(f"Error: Installer not found at {local_installer}")
@@ -48,11 +48,11 @@ def main():
 
     # Generate version.json
     version_info = {
-        "version": "1.1.0",
+        "version": "1.2.0",
         "releaseDate": "2026-09-28",
         "downloadUrl": installer_url,
         "installerName": installer_name,
-        "notes": "주학습 계획안(HWP/HWPX) 자동 분석, 실제 교재 쪽수 검사 및 맞춤 기능 추가"
+        "notes": "상단 헤더 간소화(현재 과목/쪽수만 표시), 양쪽 사이드 컨트롤 배치, 주학습계획안 시간표 기반 자동 교과서 이동 및 시종/쉬는시간 알림 커스터마이징"
     }
 
     local_version_file = os.path.join("build", "bin", "version.json")

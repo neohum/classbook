@@ -126,17 +126,54 @@ export default function MainPage() {
         };
         loadInitialData();
 
+        const applyWeeklyPlan = (plan: main.WeeklyPlanResult) => {
+            if (!plan || !plan.success || !plan.schedule) return;
+
+            const now = new Date();
+            const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+            const targetDay = (dayOfWeek === '일' || dayOfWeek === '토') ? '월' : dayOfWeek;
+            const dayItems = plan.schedule[targetDay] || [];
+            if (dayItems.length === 0) return;
+
+            const hh = now.getHours().toString().padStart(2, '0');
+            const mm = now.getMinutes().toString().padStart(2, '0');
+            const currentTimeStr = `${hh}:${mm}`;
+
+            let activePeriod = 1;
+            for (const s of defaultSchedule) {
+                if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
+                    activePeriod = s.period;
+                    break;
+                } else if (currentTimeStr < s.startTime) {
+                    activePeriod = s.period;
+                    break;
+                } else if (currentTimeStr > s.endTime) {
+                    activePeriod = Math.min(6, s.period + 1);
+                }
+            }
+
+            const targetItem = dayItems.find(it => it.period === activePeriod) || dayItems[0];
+            if (targetItem && targetItem.matchedBookId) {
+                const targetPage = targetItem.startPage || 1;
+                showToast(`주학습계획안 반영: ${targetDay}요일 ${targetItem.period}교시 [${targetItem.subject} ${targetPage}쪽]으로 이동합니다.`);
+                setTimeout(() => {
+                    navigate(`/viewer/${encodeURIComponent(targetItem.matchedBookId)}?targetPage=${targetPage}`);
+                }, 1200);
+            }
+        };
+
         // Listen for weekly plan updates from folder watcher
         const handlePlanUpdate = (plan: main.WeeklyPlanResult) => {
             if (plan && plan.success) {
                 setCurrentPlan(plan);
                 showToast(`새 주학습계획안이 감지되어 분석되었습니다: ${plan.title}`);
+                applyWeeklyPlan(plan);
             }
         };
 
         EventsOn('weekly-plan-updated', handlePlanUpdate);
         return () => EventsOff('weekly-plan-updated');
-    }, []);
+    }, [navigate]);
 
     // Time-based Class Alert Checker
     useEffect(() => {
