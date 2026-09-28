@@ -1374,131 +1374,133 @@ export default function ViewerPage() {
                 onTouchMove={onTouchMovePanel}
                 onTouchEnd={onTouchEndPanel}
             >
-                {/* Left Side Controls */}
+                {/* Left Side Controls - Compact & Bottom Floating */}
                 <div
-                    className="absolute z-50 flex flex-col gap-2.5 items-center pointer-events-auto"
+                    className="absolute z-50 flex flex-col gap-1.5 items-center pointer-events-auto"
                     style={{
-                        left: `${vp.x + 16}px`,
-                        top: `${vp.y + vp.h / 2}px`,
-                        transform: `translate(0, -50%) scale(${1 / vp.scale})`,
-                        transformOrigin: 'left center'
+                        left: `${vp.x + 12}px`,
+                        bottom: '16px',
+                        transform: `scale(${1 / vp.scale})`,
+                        transformOrigin: 'left bottom'
                     }}
                 >
                     {/* 이전 페이지 */}
                     <button
                         onClick={goToPrevPage}
                         disabled={currentPage <= 1}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600/90 backdrop-blur disabled:opacity-20 disabled:pointer-events-none text-white rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-violet-600/90 backdrop-blur-md disabled:opacity-20 disabled:pointer-events-none text-white rounded-xl flex items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 cursor-pointer active:scale-95"
                         title="이전 쪽"
                     >
-                        <ChevronLeft className="w-8 h-8 -ml-0.5" />
+                        <ChevronLeft className="w-5 h-5 -ml-0.5" />
                     </button>
 
                     {/* 목록으로 */}
                     <button
                         onClick={goBack}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-slate-200 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-violet-600/90 backdrop-blur-md text-slate-200 hover:text-white rounded-xl flex flex-col items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 group cursor-pointer active:scale-95"
                         title="목록으로"
                     >
-                        <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] font-bold mt-0.5 leading-none">목록</span>
+                        <Home className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[8px] font-bold mt-0.5 leading-none">목록</span>
                     </button>
 
                     {/* 계획안 */}
                     <button
                         onClick={() => setIsWeeklyPlanModalOpen(true)}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-violet-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-violet-600/90 backdrop-blur-md text-violet-300 hover:text-white rounded-xl flex flex-col items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 group cursor-pointer active:scale-95"
                         title="주학습 계획안 보기"
                     >
-                        <Calendar className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] font-bold mt-0.5 leading-none">계획안</span>
+                        <Calendar className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[8px] font-bold mt-0.5 leading-none">계획안</span>
                     </button>
 
                     {/* 설정 */}
                     <button
                         onClick={openSettings}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-slate-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-violet-600/90 backdrop-blur-md text-slate-300 hover:text-white rounded-xl flex flex-col items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 group cursor-pointer active:scale-95"
                         title="설정"
                     >
-                        <Settings className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] font-bold mt-0.5 leading-none">설정</span>
+                        <Settings className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[8px] font-bold mt-0.5 leading-none">설정</span>
                     </button>
 
-                    <div className="w-8 h-px bg-slate-700/60 my-0.5" />
+                    <div className="w-5 h-px bg-white/15 my-0.5" />
 
                     {/* Info Button */}
                     <button
                         onClick={() => setIsInfoModalOpen(true)}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-slate-700/80 text-slate-300 hover:text-white backdrop-blur-md rounded-xl flex items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 cursor-pointer active:scale-95"
                         title="단원/쪽수 정보"
                     >
-                        <BookOpen className="w-6 h-6" />
+                        <BookOpen className="w-4 h-4" />
                     </button>
 
                     {/* 타이머 */}
                     <button
                         onClick={() => setIsTimerModalOpen(!isTimerModalOpen)}
-                        className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 ${timerSeconds > 0 || isTimerModalOpen ? 'bg-violet-600 text-white' : 'bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex flex-col items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 cursor-pointer active:scale-95 backdrop-blur-md ${timerSeconds > 0 || isTimerModalOpen ? 'bg-violet-600/90 text-white opacity-100' : 'bg-slate-900/40 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
                         title="수업 타이머"
                     >
-                        <Clock className={timerSeconds > 0 ? "w-4 h-4 mb-0.5" : "w-6 h-6"} />
-                        {timerSeconds > 0 && <span className="text-[10px] font-mono font-bold leading-none">{formatTime(timerSeconds)}</span>}
+                        <Clock className={timerSeconds > 0 ? "w-3 h-3 mb-0.5" : "w-4 h-4"} />
+                        {timerSeconds > 0 && <span className="text-[8px] font-mono font-bold leading-none">{formatTime(timerSeconds)}</span>}
                     </button>
 
                     {/* 판서 모드 토글 */}
                     <div className="relative flex items-center">
                         <button
                             onClick={toggleDrawingMode}
-                            className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10 ${isDrawingMode ? 'bg-violet-600 text-white' : 'bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 cursor-pointer active:scale-95 backdrop-blur-md ${isDrawingMode ? 'bg-violet-600/90 text-white opacity-100' : 'bg-slate-900/40 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
                             title="판서 모드 토글"
                         >
-                            <PenTool className="w-6 h-6" />
+                            <PenTool className="w-4 h-4" />
                         </button>
                         {isDrawingMode && (
-                            <div className="absolute left-[calc(100%+0.5rem)] flex flex-col bg-slate-800/90 backdrop-blur border border-slate-600 rounded-[2rem] py-3 px-1.5 shadow-xl pointer-events-auto items-center gap-2 z-50">
-                                <button onClick={() => { setColor('#ef4444'); setIsEraser(false); }} className={`w-5 h-5 rounded-full bg-red-500 border-2 ${color === '#ef4444' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="빨강" />
-                                <button onClick={() => { setColor('#3b82f6'); setIsEraser(false); }} className={`w-5 h-5 rounded-full bg-blue-500 border-2 ${color === '#3b82f6' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="파랑" />
-                                <button onClick={() => { setColor('#eab308'); setIsEraser(false); setLineWidth(12); }} className={`w-5 h-5 rounded-full bg-yellow-500/50 border-2 ${color === '#eab308' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="형광펜" />
-                                <button onClick={() => { setColor('#000000'); setIsEraser(false); setLineWidth(4); }} className={`w-5 h-5 rounded-full bg-black border-2 ${color === '#000000' && !isEraser ? 'border-white scale-110' : 'border-slate-500'} transition-all`} title="검정" />
-                                <div className="w-6 h-px bg-slate-600 my-0.5" />
-                                <button onClick={() => setIsEraser(true)} className={`p-1.5 rounded-full transition-colors ${isEraser ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`} title="지우개">
-                                    <Eraser className="w-4 h-4" />
+                            <div className="absolute left-[calc(100%+0.5rem)] bottom-0 flex flex-col bg-slate-900/80 backdrop-blur-md border border-slate-600/80 rounded-2xl py-2 px-1 shadow-2xl pointer-events-auto items-center gap-1.5 z-50">
+                                <button onClick={() => { setColor('#ef4444'); setIsEraser(false); }} className={`w-4 h-4 rounded-full bg-red-500 border-2 ${color === '#ef4444' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="빨강" />
+                                <button onClick={() => { setColor('#3b82f6'); setIsEraser(false); }} className={`w-4 h-4 rounded-full bg-blue-500 border-2 ${color === '#3b82f6' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="파랑" />
+                                <button onClick={() => { setColor('#eab308'); setIsEraser(false); setLineWidth(12); }} className={`w-4 h-4 rounded-full bg-yellow-500/50 border-2 ${color === '#eab308' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="형광펜" />
+                                <button onClick={() => { setColor('#000000'); setIsEraser(false); setLineWidth(4); }} className={`w-4 h-4 rounded-full bg-black border-2 ${color === '#000000' && !isEraser ? 'border-white scale-110' : 'border-slate-500'} transition-all`} title="검정" />
+                                <div className="w-4 h-px bg-slate-600 my-0.5" />
+                                <button onClick={() => setIsEraser(true)} className={`p-1 rounded-full transition-colors ${isEraser ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`} title="지우개">
+                                    <Eraser className="w-3.5 h-3.5" />
                                 </button>
-                                <button onClick={clearCanvas} className="p-1.5 text-slate-300 hover:text-red-400 hover:bg-slate-700 rounded-full transition-colors" title="전체 지우기">
-                                    <Trash2 className="w-4 h-4" />
+                                <button onClick={clearCanvas} className="p-1 text-slate-300 hover:text-red-400 hover:bg-slate-700 rounded-full transition-colors" title="전체 지우기">
+                                    <Trash2 className="w-3.5 h-3.5" />
                                 </button>
-                                <div className="w-6 h-px bg-slate-600 my-0.5" />
-                                <button onClick={() => setIsWhiteboard(!isWhiteboard)} className={`p-1.5 rounded-md transition-colors ${isWhiteboard ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`} title="흰색 배경 켜기/끄기">
-                                    <Square className="w-4 h-4 fill-current" />
+                                <div className="w-4 h-px bg-slate-600 my-0.5" />
+                                <button onClick={() => setIsWhiteboard(!isWhiteboard)} className={`p-1 rounded-md transition-colors ${isWhiteboard ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`} title="흰색 배경 켜기/끄기">
+                                    <Square className="w-3.5 h-3.5 fill-current" />
                                 </button>
                             </div>
                         )}
                     </div>
 
-                    <div className="w-8 h-px bg-slate-700/60 my-0.5" />
+                    <div className="w-5 h-px bg-white/15 my-0.5" />
 
                     {/* Window Controls */}
-                    <button
-                        onClick={WindowMinimise}
-                        className="w-11 h-11 bg-slate-900/80 hover:bg-slate-700/80 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-white/10"
-                        title="최소화"
-                    >
-                        <Minus className="w-5 h-5" />
-                    </button>
-                    <button
-                        onClick={toggleFullscreen}
-                        className="w-11 h-11 bg-slate-900/80 hover:bg-slate-700/80 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-white/10"
-                        title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
-                    >
-                        {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                    </button>
-                    <button
-                        onClick={Quit}
-                        className="w-11 h-11 bg-slate-900/80 hover:bg-red-600/90 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-red-500/20"
-                        title="프로그램 종료"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
+                    <div className="flex flex-col gap-1 items-center">
+                        <button
+                            onClick={WindowMinimise}
+                            className="w-7 h-7 sm:w-8 sm:h-8 bg-slate-900/30 hover:bg-slate-700/80 text-slate-400 hover:text-white backdrop-blur-md rounded-lg flex items-center justify-center transition-all shadow-sm border border-white/10 opacity-60 hover:opacity-100 cursor-pointer"
+                            title="최소화"
+                        >
+                            <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                            onClick={toggleFullscreen}
+                            className="w-7 h-7 sm:w-8 sm:h-8 bg-slate-900/30 hover:bg-slate-700/80 text-slate-400 hover:text-white backdrop-blur-md rounded-lg flex items-center justify-center transition-all shadow-sm border border-white/10 opacity-60 hover:opacity-100 cursor-pointer"
+                            title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
+                        >
+                            {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                            onClick={Quit}
+                            className="w-7 h-7 sm:w-8 sm:h-8 bg-slate-900/30 hover:bg-red-600/90 text-slate-400 hover:text-white backdrop-blur-md rounded-lg flex items-center justify-center transition-all shadow-sm border border-red-500/20 opacity-60 hover:opacity-100 cursor-pointer"
+                            title="프로그램 종료"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Image Spread */}
@@ -1509,132 +1511,133 @@ export default function ViewerPage() {
                     )}
                 </div>
 
-                {/* Right Side Controls */}
+                {/* Right Side Controls - Compact & Bottom Floating */}
                 <div
-                    className="absolute z-50 flex flex-col gap-2.5 items-center pointer-events-auto"
+                    className="absolute z-50 flex flex-col gap-1.5 items-center pointer-events-auto"
                     style={{
-                        left: `${vp.x + vp.w - 16}px`,
-                        top: `${vp.y + vp.h / 2}px`,
-                        transform: `translate(-100%, -50%) scale(${1 / vp.scale})`,
-                        transformOrigin: 'right center'
+                        left: `${vp.x + vp.w - 12}px`,
+                        bottom: '16px',
+                        transform: `translate(-100%, 0) scale(${1 / vp.scale})`,
+                        transformOrigin: 'right bottom'
                     }}
                 >
                     {/* 다음 페이지 */}
                     <button
                         onClick={goToNextPage}
                         disabled={rightPage === null || rightPage >= numPages}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600/90 backdrop-blur disabled:opacity-20 disabled:pointer-events-none text-white rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-violet-600/90 backdrop-blur-md disabled:opacity-20 disabled:pointer-events-none text-white rounded-xl flex items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 cursor-pointer active:scale-95"
                         title="다음 쪽"
                     >
-                        <ChevronRight className="w-8 h-8 -mr-0.5" />
+                        <ChevronRight className="w-5 h-5 -mr-0.5" />
                     </button>
 
                     {/* 목록으로 */}
                     <button
                         onClick={goBack}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-slate-200 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-violet-600/90 backdrop-blur-md text-slate-200 hover:text-white rounded-xl flex flex-col items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 group cursor-pointer active:scale-95"
                         title="목록으로"
                     >
-                        <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] font-bold mt-0.5 leading-none">목록</span>
+                        <Home className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[8px] font-bold mt-0.5 leading-none">목록</span>
                     </button>
-
 
                     {/* 계획안 */}
                     <button
                         onClick={() => setIsWeeklyPlanModalOpen(true)}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-violet-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-violet-600/90 backdrop-blur-md text-violet-300 hover:text-white rounded-xl flex flex-col items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 group cursor-pointer active:scale-95"
                         title="주학습 계획안 보기"
                     >
-                        <Calendar className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] font-bold mt-0.5 leading-none">계획안</span>
+                        <Calendar className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[8px] font-bold mt-0.5 leading-none">계획안</span>
                     </button>
 
                     {/* 설정 */}
                     <button
                         onClick={openSettings}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-violet-600 backdrop-blur text-slate-300 hover:text-white rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 group"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-violet-600/90 backdrop-blur-md text-slate-300 hover:text-white rounded-xl flex flex-col items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 group cursor-pointer active:scale-95"
                         title="설정"
                     >
-                        <Settings className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span className="text-[10px] font-bold mt-0.5 leading-none">설정</span>
+                        <Settings className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[8px] font-bold mt-0.5 leading-none">설정</span>
                     </button>
 
-                    <div className="w-8 h-px bg-slate-700/60 my-0.5" />
+                    <div className="w-5 h-px bg-white/15 my-0.5" />
 
                     {/* Info Button */}
                     <button
                         onClick={() => setIsInfoModalOpen(true)}
-                        className="w-13 h-13 sm:w-14 sm:h-14 bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900/40 hover:bg-slate-700/80 text-slate-300 hover:text-white backdrop-blur-md rounded-xl flex items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 cursor-pointer active:scale-95"
                         title="단원/페이지 정보"
                     >
-                        <BookOpen className="w-6 h-6" />
+                        <BookOpen className="w-4 h-4" />
                     </button>
 
                     {/* 타이머 */}
                     <button
                         onClick={() => setIsTimerModalOpen(!isTimerModalOpen)}
-                        className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl border border-white/10 ${timerSeconds > 0 || isTimerModalOpen ? 'bg-violet-600 text-white' : 'bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex flex-col items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 cursor-pointer active:scale-95 backdrop-blur-md ${timerSeconds > 0 || isTimerModalOpen ? 'bg-violet-600/90 text-white opacity-100' : 'bg-slate-900/40 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
                         title="수업 타이머"
                     >
-                        <Clock className={timerSeconds > 0 ? "w-4 h-4 mb-0.5" : "w-6 h-6"} />
-                        {timerSeconds > 0 && <span className="text-[10px] font-mono font-bold leading-none">{formatTime(timerSeconds)}</span>}
+                        <Clock className={timerSeconds > 0 ? "w-3 h-3 mb-0.5" : "w-4 h-4"} />
+                        {timerSeconds > 0 && <span className="text-[8px] font-mono font-bold leading-none">{formatTime(timerSeconds)}</span>}
                     </button>
 
                     {/* 판서 모드 토글 */}
                     <div className="relative flex items-center justify-end">
                         <button
                             onClick={toggleDrawingMode}
-                            className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center transition-all shadow-xl border border-white/10 ${isDrawingMode ? 'bg-violet-600 text-white' : 'bg-slate-900/90 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
+                            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all shadow-md border border-white/15 opacity-75 hover:opacity-100 cursor-pointer active:scale-95 backdrop-blur-md ${isDrawingMode ? 'bg-violet-600/90 text-white opacity-100' : 'bg-slate-900/40 hover:bg-slate-700/80 text-slate-300 hover:text-white'}`}
                             title="판서 모드 토글"
                         >
-                            <PenTool className="w-6 h-6" />
+                            <PenTool className="w-4 h-4" />
                         </button>
                         {isDrawingMode && (
-                            <div className="absolute right-[calc(100%+0.5rem)] flex flex-col bg-slate-800/90 backdrop-blur border border-slate-600 rounded-[2rem] py-3 px-1.5 shadow-xl pointer-events-auto items-center gap-2 z-50">
-                                <button onClick={() => { setColor('#ef4444'); setIsEraser(false); }} className={`w-5 h-5 rounded-full bg-red-500 border-2 ${color === '#ef4444' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="빨강" />
-                                <button onClick={() => { setColor('#3b82f6'); setIsEraser(false); }} className={`w-5 h-5 rounded-full bg-blue-500 border-2 ${color === '#3b82f6' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="파랑" />
-                                <button onClick={() => { setColor('#eab308'); setIsEraser(false); setLineWidth(12); }} className={`w-5 h-5 rounded-full bg-yellow-500/50 border-2 ${color === '#eab308' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="형광펜" />
-                                <button onClick={() => { setColor('#000000'); setIsEraser(false); setLineWidth(4); }} className={`w-5 h-5 rounded-full bg-black border-2 ${color === '#000000' && !isEraser ? 'border-white scale-110' : 'border-slate-500'} transition-all`} title="검정" />
+                            <div className="absolute right-[calc(100%+0.5rem)] bottom-0 flex flex-col bg-slate-900/80 backdrop-blur-md border border-slate-600/80 rounded-2xl py-2 px-1 shadow-2xl pointer-events-auto items-center gap-1.5 z-50">
+                                <button onClick={() => { setColor('#ef4444'); setIsEraser(false); }} className={`w-4 h-4 rounded-full bg-red-500 border-2 ${color === '#ef4444' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="빨강" />
+                                <button onClick={() => { setColor('#3b82f6'); setIsEraser(false); }} className={`w-4 h-4 rounded-full bg-blue-500 border-2 ${color === '#3b82f6' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="파랑" />
+                                <button onClick={() => { setColor('#eab308'); setIsEraser(false); setLineWidth(12); }} className={`w-4 h-4 rounded-full bg-yellow-500/50 border-2 ${color === '#eab308' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="형광펜" />
+                                <button onClick={() => { setColor('#000000'); setIsEraser(false); setLineWidth(4); }} className={`w-4 h-4 rounded-full bg-black border-2 ${color === '#000000' && !isEraser ? 'border-white scale-110' : 'border-slate-500'} transition-all`} title="검정" />
                                 <div className="w-6 h-px bg-slate-600 my-0.5" />
-                                <button onClick={() => setIsEraser(true)} className={`p-1.5 rounded-full transition-colors ${isEraser ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`} title="지우개">
-                                    <Eraser className="w-4 h-4" />
+                                <button onClick={() => setIsEraser(true)} className={`p-1 rounded-full transition-colors ${isEraser ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`} title="지우개">
+                                    <Eraser className="w-3.5 h-3.5" />
                                 </button>
-                                <button onClick={clearCanvas} className="p-1.5 text-slate-300 hover:text-red-400 hover:bg-slate-700 rounded-full transition-colors" title="전체 지우기">
-                                    <Trash2 className="w-4 h-4" />
+                                <button onClick={clearCanvas} className="p-1 text-slate-300 hover:text-red-400 hover:bg-slate-700 rounded-full transition-colors" title="전체 지우기">
+                                    <Trash2 className="w-3.5 h-3.5" />
                                 </button>
-                                <div className="w-6 h-px bg-slate-600 my-0.5" />
-                                <button onClick={() => setIsWhiteboard(!isWhiteboard)} className={`p-1.5 rounded-md transition-colors ${isWhiteboard ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`} title="흰색 배경 켜기/끄기">
-                                    <Square className="w-4 h-4 fill-current" />
+                                <div className="w-4 h-px bg-slate-600 my-0.5" />
+                                <button onClick={() => setIsWhiteboard(!isWhiteboard)} className={`p-1 rounded-md transition-colors ${isWhiteboard ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`} title="흰색 배경 켜기/끄기">
+                                    <Square className="w-3.5 h-3.5 fill-current" />
                                 </button>
                             </div>
                         )}
                     </div>
 
-                    <div className="w-8 h-px bg-slate-700/60 my-0.5" />
+                    <div className="w-5 h-px bg-white/15 my-0.5" />
 
                     {/* Window Controls */}
-                    <button
-                        onClick={WindowMinimise}
-                        className="w-11 h-11 bg-slate-900/80 hover:bg-slate-700/80 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-white/10"
-                        title="최소화"
-                    >
-                        <Minus className="w-5 h-5" />
-                    </button>
-                    <button
-                        onClick={toggleFullscreen}
-                        className="w-11 h-11 bg-slate-900/80 hover:bg-slate-700/80 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-white/10"
-                        title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
-                    >
-                        {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                    </button>
-                    <button
-                        onClick={Quit}
-                        className="w-11 h-11 bg-slate-900/80 hover:bg-red-600/90 text-slate-400 hover:text-white rounded-xl flex items-center justify-center transition-all shadow-xl border border-red-500/20"
-                        title="프로그램 종료"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
+                    <div className="flex flex-col gap-1 items-center">
+                        <button
+                            onClick={WindowMinimise}
+                            className="w-7 h-7 sm:w-8 sm:h-8 bg-slate-900/30 hover:bg-slate-700/80 text-slate-400 hover:text-white backdrop-blur-md rounded-lg flex items-center justify-center transition-all shadow-sm border border-white/10 opacity-60 hover:opacity-100 cursor-pointer"
+                            title="최소화"
+                        >
+                            <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                            onClick={toggleFullscreen}
+                            className="w-7 h-7 sm:w-8 sm:h-8 bg-slate-900/30 hover:bg-slate-700/80 text-slate-400 hover:text-white backdrop-blur-md rounded-lg flex items-center justify-center transition-all shadow-sm border border-white/10 opacity-60 hover:opacity-100 cursor-pointer"
+                            title={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
+                        >
+                            {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                            onClick={Quit}
+                            className="w-7 h-7 sm:w-8 sm:h-8 bg-slate-900/30 hover:bg-red-600/90 text-slate-400 hover:text-white backdrop-blur-md rounded-lg flex items-center justify-center transition-all shadow-sm border border-red-500/20 opacity-60 hover:opacity-100 cursor-pointer"
+                            title="프로그램 종료"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
                 </div>
             </main>
 

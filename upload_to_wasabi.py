@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "하단 플로팅 독 액션 바 적용, 주안 미리보기 다른 날 차시 원클릭 이동, 앱 시작 시 시간에 맞춘 해당 과목/페이지 자동 표출 (v1.2.3)"
+    notes = "교과서 뷰어 좌우 컨트롤 2/3 축소, 하단 배치 및 투명 플로팅 적용으로 전체화면 개방감 극대화 (v1.2.4)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()
