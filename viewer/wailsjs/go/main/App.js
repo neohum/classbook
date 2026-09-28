@@ -18,16 +18,36 @@ export function EnsureBookDir(arg1, arg2) {
   return window['go']['main']['App']['EnsureBookDir'](arg1, arg2);
 }
 
+export function EnsureBookDirWithOffset(arg1, arg2, arg3) {
+  return window['go']['main']['App']['EnsureBookDirWithOffset'](arg1, arg2, arg3);
+}
+
 export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
+}
+
+export function GetBookMetadata(arg1) {
+  return window['go']['main']['App']['GetBookMetadata'](arg1);
+}
+
+export function GetLatestWeeklyPlan() {
+  return window['go']['main']['App']['GetLatestWeeklyPlan']();
 }
 
 export function GetTextbooks() {
   return window['go']['main']['App']['GetTextbooks']();
 }
 
+export function GetWatchFolder() {
+  return window['go']['main']['App']['GetWatchFolder']();
+}
+
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
+}
+
+export function ParseWeeklyPlanFile(arg1) {
+  return window['go']['main']['App']['ParseWeeklyPlanFile'](arg1);
 }
 
 export function ReadFileBase64(arg1) {
@@ -46,6 +66,22 @@ export function SelectPdfDialog() {
   return window['go']['main']['App']['SelectPdfDialog']();
 }
 
+export function SelectWatchFolderDialog() {
+  return window['go']['main']['App']['SelectWatchFolderDialog']();
+}
+
+export function SelectWeeklyPlanFileDialog() {
+  return window['go']['main']['App']['SelectWeeklyPlanFileDialog']();
+}
+
+export function SetWatchFolder(arg1) {
+  return window['go']['main']['App']['SetWatchFolder'](arg1);
+}
+
 export function StartDrag() {
   return window['go']['main']['App']['StartDrag']();
+}
+
+export function UpdateBookOffset(arg1, arg2) {
+  return window['go']['main']['App']['UpdateBookOffset'](arg1, arg2);
 }

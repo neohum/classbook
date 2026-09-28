@@ -1,30 +1,42 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, BookCopy, ArrowRight, X, Maximize, Minimize, Trash2, Plus, Loader2 } from 'lucide-react';
-import { Quit, WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen } from '../../wailsjs/runtime/runtime';
-import { DeleteBook, SelectMultiplePdfsDialog, ReadFileBase64, EnsureBookDir, SavePageImage, GetTextbooks, GetAppVersion } from '../../wailsjs/go/main/App';
+import { 
+    BookOpen, BookCopy, ArrowRight, X, Maximize, Minimize, 
+    Trash2, Plus, Loader2, Calendar, FolderOpen, Upload, 
+    SlidersHorizontal, Bell, Sparkles, CheckCircle2 
+} from 'lucide-react';
+import { Quit, WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { 
+    DeleteBook, SelectMultiplePdfsDialog, ReadFileBase64, 
+    EnsureBookDirWithOffset, SavePageImage, GetTextbooks, GetAppVersion,
+    GetWatchFolder, SelectWatchFolderDialog, GetLatestWeeklyPlan, SelectWeeklyPlanFileDialog
+} from '../../wailsjs/go/main/App';
+import { main } from '../../wailsjs/go/models';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorkerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+
+import { detectPageNumberFromText, detectPageNumberFromCanvas } from '../utils/ocrOffsetDetector';
+import PageOffsetAdjustModal from '../components/PageOffsetAdjustModal';
+import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
+import WeeklyPlanScheduleModal from '../components/WeeklyPlanScheduleModal';
 
 // Configure PDF.js worker using Vite's ?url literal for local bundling
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 
-const INITIAL_TEXTBOOKS = [
-    { id: '국어1-1가', title: '국어 1-1 가', color: 'bg-orange-500' },
-    { id: '국어활동1-1', title: '국어 활동 1-1', color: 'bg-orange-400' },
-    { id: '수학1-1', title: '수학 1-1', color: 'bg-blue-500' },
-    { id: '수학익힘1-1', title: '수학 익힘 1-1', color: 'bg-blue-400' },
-    { id: '학교1-1', title: '학교 1-1', color: 'bg-green-500' },
+const defaultSchedule = [
+    { period: 1, startTime: '09:00', endTime: '09:40' },
+    { period: 2, startTime: '09:50', endTime: '10:30' },
+    { period: 3, startTime: '10:40', endTime: '11:20' },
+    { period: 4, startTime: '11:30', endTime: '12:10' },
+    { period: 5, startTime: '13:00', endTime: '13:40' },
+    { period: 6, startTime: '13:50', endTime: '14:30' },
 ];
-
-export { INITIAL_TEXTBOOKS };
 
 function PdfThumbnail({ bookId }: { bookId: string }) {
     const [loading, setLoading] = useState(true);
     const [imgUrl, setImgUrl] = useState('');
 
     useEffect(() => {
-        // Thumbnail is just the first page image
         const url = `/book/images/${bookId}/page_1.jpg`;
         const img = new Image();
         img.src = url;
@@ -33,13 +45,12 @@ function PdfThumbnail({ bookId }: { bookId: string }) {
             setLoading(false);
         };
         img.onerror = () => {
-            console.error("Failed to load thumbnail for", bookId);
             setLoading(false);
         };
     }, [bookId]);
 
     return (
-        <div className={`relative w-full h-full flex items-center justify-center overflow-hidden`}>
+        <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
             {loading && (
                 <div className="absolute inset-0 flex items-center justify-center">
                     <BookCopy className="w-16 h-16 text-white/40 drop-shadow-sm animate-pulse" />
@@ -60,27 +71,109 @@ export default function MainPage() {
     const navigate = useNavigate();
     const [isFullscreen, setIsFullscreen] = useState(false);
 
-    const [textbooks, setTextbooks] = useState<any[]>([]);
+    const [textbooks, setTextbooks] = useState<main.Textbook[]>([]);
     const [isConverting, setIsConverting] = useState(false);
-    const [convertProgress, setConvertProgress] = useState({ current: 0, total: 0, title: '' });
+    const [convertProgress, setConvertProgress] = useState({ current: 0, total: 0, title: '', statusText: '' });
     const [appVersion, setAppVersion] = useState<string>('');
+
+    // Weekly Plan States
+    const [watchFolder, setWatchFolder] = useState<string>('');
+    const [currentPlan, setCurrentPlan] = useState<main.WeeklyPlanResult | null>(null);
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+
+    // Class Alert States
+    const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
+    const [alertPeriod, setAlertPeriod] = useState(1);
+    const [alertPeriodTime, setAlertPeriodTime] = useState('');
+    const [alertItem, setAlertItem] = useState<main.WeeklyPlanItem | null>(null);
+    const lastAlertTimeRef = useRef<string>('');
+
+    // Page Offset Modal State
+    const [offsetModalBook, setOffsetModalBook] = useState<{
+        id: string;
+        title: string;
+        numPages: number;
+        initialOffset: number;
+        detectedOffset: number | null;
+    } | null>(null);
+
+    // Toast notification
+    const [toastMessage, setToastMessage] = useState<string>('');
+
+    const showToast = (msg: string) => {
+        setToastMessage(msg);
+        setTimeout(() => setToastMessage(''), 4000);
+    };
 
     // Load initial data on mount
     useEffect(() => {
         const loadInitialData = async () => {
             try {
                 const books = await GetTextbooks();
-                if (books) {
-                    setTextbooks(books);
-                }
+                if (books) setTextbooks(books);
+
                 const version = await GetAppVersion();
                 setAppVersion(version);
+
+                const folder = await GetWatchFolder();
+                if (folder) setWatchFolder(folder);
+
+                const plan = await GetLatestWeeklyPlan();
+                if (plan && plan.success) setCurrentPlan(plan);
             } catch (err) {
                 console.error("Failed to load initial data:", err);
             }
         };
         loadInitialData();
+
+        // Listen for weekly plan updates from folder watcher
+        const handlePlanUpdate = (plan: main.WeeklyPlanResult) => {
+            if (plan && plan.success) {
+                setCurrentPlan(plan);
+                showToast(`새 주학습계획안이 감지되어 분석되었습니다: ${plan.title}`);
+            }
+        };
+
+        EventsOn('weekly-plan-updated', handlePlanUpdate);
+        return () => EventsOff('weekly-plan-updated');
     }, []);
+
+    // Time-based Class Alert Checker
+    useEffect(() => {
+        const checkCurrentClass = () => {
+            if (!currentPlan || !currentPlan.schedule) return;
+
+            const now = new Date();
+            const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+            if (dayOfWeek === '일' || dayOfWeek === '토') return;
+
+            const hh = now.getHours().toString().padStart(2, '0');
+            const mm = now.getMinutes().toString().padStart(2, '0');
+            const currentTimeStr = `${hh}:${mm}`;
+
+            if (lastAlertTimeRef.current === currentTimeStr) return;
+
+            // Check if current time matches any period start
+            for (const sched of defaultSchedule) {
+                if (sched.startTime === currentTimeStr) {
+                    lastAlertTimeRef.current = currentTimeStr;
+                    const dayItems = currentPlan.schedule[dayOfWeek] || [];
+                    const foundItem = dayItems.find(it => it.period === sched.period);
+
+                    if (foundItem) {
+                        setAlertPeriod(sched.period);
+                        setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
+                        setAlertItem(foundItem);
+                        setIsAlertModalOpen(true);
+                    }
+                    break;
+                }
+            }
+        };
+
+        const timer = setInterval(checkCurrentClass, 1000);
+        return () => clearInterval(timer);
+    }, [currentPlan]);
 
     const handleDelete = async (e: React.MouseEvent, bookId: string) => {
         e.stopPropagation();
@@ -91,6 +184,7 @@ export default function MainPage() {
         try {
             await DeleteBook(bookId);
             setTextbooks(prev => prev.filter(b => b.id !== bookId));
+            showToast("교과서가 삭제되었습니다.");
         } catch (error) {
             console.error("Failed to delete book:", error);
             alert(`교과서 삭제에 실패했습니다: ${error}`);
@@ -112,7 +206,6 @@ export default function MainPage() {
         }
     };
 
-    // Track Escape key to exit fullscreen manually since Wails takes over standard HTML5 behavior
     useEffect(() => {
         const handleKeyDown = async (e: KeyboardEvent) => {
             if (e.key === 'Escape' && isFullscreen) {
@@ -124,16 +217,17 @@ export default function MainPage() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isFullscreen]);
 
+    // Handle book upload with automatic page offset inspection
     const handleAddBook = async () => {
         try {
-            // 1. Let user pick multiple PDFs
             const pdfPaths = await SelectMultiplePdfsDialog();
-            if (!pdfPaths || pdfPaths.length === 0) return; // User cancelled
+            if (!pdfPaths || pdfPaths.length === 0) return;
 
             setIsConverting(true);
 
             let currentBooks = await GetTextbooks();
             let addedCount = 0;
+            let lastAddedBookForOffset: any = null;
 
             for (let i = 0; i < pdfPaths.length; i++) {
                 const pdfPath = pdfPaths[i];
@@ -155,12 +249,12 @@ export default function MainPage() {
 
                 if (currentBooks.some((b: any) => b.id === title)) {
                     if (pdfPaths.length === 1) alert("이미 같은 이름의 교과서가 존재합니다.");
-                    continue; // Skip if still duplicated
+                    continue;
                 }
 
-                setConvertProgress({ current: 0, total: 1, title });
+                setConvertProgress({ current: 0, total: 1, title, statusText: 'PDF 파일 읽는 중...' });
 
-                // 3. Read File as Base64 from Go Backend
+                // Read File as Base64
                 const base64Data = await ReadFileBase64(pdfPath);
                 const raw = window.atob(base64Data);
                 const uint8Array = new Uint8Array(raw.length);
@@ -168,20 +262,18 @@ export default function MainPage() {
                     uint8Array[j] = raw.charCodeAt(j);
                 }
 
-                // 4. Load with PDF.js
+                // Load with PDF.js
                 const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
                 const pdf = await loadingTask.promise;
                 const numPages = pdf.numPages;
 
-                setConvertProgress({ current: 0, total: numPages, title });
+                setConvertProgress({ current: 0, total: numPages, title, statusText: '페이지 변환 및 쪽수 검사 중...' });
 
-                // 5. Ensure Book Directory exists
-                await EnsureBookDir(title, numPages);
-
-                // 6. Render each page to canvas -> base64 -> send to Go Backend
                 const scale = 1.5;
                 const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d', { alpha: false }); // JPEG doesn't need alpha
+                const ctx = canvas.getContext('2d', { alpha: false });
+
+                let detectedOffset: number | null = null;
 
                 for (let j = 1; j <= numPages; j++) {
                     const page = await pdf.getPage(j);
@@ -202,138 +294,315 @@ export default function MainPage() {
 
                         const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
                         await SavePageImage(title, j, dataUrl);
+
+                        // Inspect page numbers on pages 4 to 12
+                        if (detectedOffset === null && j >= 4 && j <= 12) {
+                            // 1. Check text layer first
+                            const printedFromText = await detectPageNumberFromText(page, viewport);
+                            if (printedFromText !== null && printedFromText > 0) {
+                                detectedOffset = j - printedFromText;
+                            } else {
+                                // 2. Fallback: OCR on corner
+                                const isEven = j % 2 === 0;
+                                const printedFromOcr = await detectPageNumberFromCanvas(canvas, isEven);
+                                if (printedFromOcr !== null && printedFromOcr > 0) {
+                                    detectedOffset = j - printedFromOcr;
+                                }
+                            }
+                        }
                     }
 
-                    setConvertProgress({ current: j, total: numPages, title });
+                    setConvertProgress({ 
+                        current: j, 
+                        total: numPages, 
+                        title, 
+                        statusText: detectedOffset !== null ? `변환 중... (감지된 쪽수 오프셋: ${detectedOffset})` : '변환 중...' 
+                    });
                 }
+
+                // Ensure directory with detected offset (default to 0 if not detected)
+                const finalOffset = detectedOffset !== null ? detectedOffset : 0;
+                await EnsureBookDirWithOffset(title, numPages, finalOffset);
 
                 currentBooks = await GetTextbooks();
                 addedCount++;
+
+                lastAddedBookForOffset = {
+                    id: title,
+                    title,
+                    numPages,
+                    initialOffset: finalOffset,
+                    detectedOffset,
+                };
             }
 
-            // 7. Refresh book list
             setTextbooks(currentBooks);
 
             if (addedCount > 0) {
-                if (pdfPaths.length === 1) {
-                    alert(`교과서가 성공적으로 추가되었습니다!`);
-                } else {
-                    alert(`${addedCount}개의 교과서가 성공적으로 추가되었습니다!`);
+                // Open adjustment modal for the added book so the user can verify/adjust immediately!
+                if (lastAddedBookForOffset) {
+                    setOffsetModalBook(lastAddedBookForOffset);
                 }
             }
-
         } catch (err: any) {
             console.error("Failed to add book:", err);
             alert(`교과서 추가 중 오류가 발생했습니다: ${err.message || err}`);
         } finally {
             setIsConverting(false);
-            setConvertProgress({ current: 0, total: 0, title: '' });
+            setConvertProgress({ current: 0, total: 0, title: '', statusText: '' });
         }
     };
 
+    // Quick navigation from weekly plan to book page
+    const handleGoToBook = (bookId: string, pageNumber: number) => {
+        // Find if bookId matches any textbook
+        const found = textbooks.find(b => b.id === bookId || b.id.includes(bookId) || bookId.includes(b.id));
+        const targetId = found ? found.id : bookId;
+        navigate(`/viewer/${encodeURIComponent(targetId)}?targetPage=${pageNumber}`);
+    };
+
+    // Manual test trigger for class alert
+    const handleTriggerTestAlert = () => {
+        if (!currentPlan || !currentPlan.schedule) {
+            alert("먼저 주학습계획안 파일(HWP/HWPX)을 등록해주세요!");
+            return;
+        }
+
+        const now = new Date();
+        const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+        const dayKey = (dayOfWeek === '일' || dayOfWeek === '토') ? '월' : dayOfWeek;
+        const items = currentPlan.schedule[dayKey] || [];
+
+        if (items.length === 0) {
+            alert(`${dayKey}요일에 등록된 수업이 없습니다.`);
+            return;
+        }
+
+        const firstItem = items[0];
+        setAlertPeriod(firstItem.period);
+        setAlertPeriodTime("09:00 ~ 09:40");
+        setAlertItem(firstItem);
+        setIsAlertModalOpen(true);
+    };
+
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-800 p-8 font-sans">
-            <header data-wails-drag className="max-w-6xl mx-auto mb-16 mt-8">
-                <div className="flex items-center justify-between mb-4">
+        <div className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8 font-sans">
+            {/* Header with Title and Control Buttons */}
+            <header data-wails-drag className="max-w-6xl mx-auto mb-10 mt-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                     <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="flex items-center gap-3">
-                        <BookOpen className="w-10 h-10 text-violet-600" />
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 flex items-baseline gap-2">
-                            나의 교과서
-                            {appVersion && <span className="text-sm font-medium text-slate-400">v{appVersion}</span>}
-                        </h1>
+                        <div className="p-3 bg-violet-600 text-white rounded-2xl shadow-lg shadow-violet-500/30">
+                            <BookOpen className="w-8 h-8" />
+                        </div>
+                        <div>
+                            <h1 className="text-3xl font-black tracking-tight text-slate-900 flex items-center gap-2">
+                                나의 교과서
+                                {appVersion && <span className="text-xs font-semibold px-2 py-0.5 bg-slate-200 text-slate-600 rounded-full">v{appVersion}</span>}
+                            </h1>
+                            <p className="text-sm text-slate-500 mt-0.5">
+                                교과서 쪽수를 자동으로 맞추고, 주학습계획안과 실시간으로 연동되는 전자 교과서
+                            </p>
+                        </div>
                     </div>
 
-                    <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="flex items-center gap-2">
+                    <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="flex items-center gap-2 flex-wrap">
+                        {/* Weekly Plan Schedule Modal Button */}
+                        <button
+                            onClick={() => setIsScheduleModalOpen(true)}
+                            className="px-4 py-2.5 bg-white hover:bg-violet-50 border border-slate-200 hover:border-violet-300 text-slate-700 hover:text-violet-700 rounded-xl transition-all font-bold text-sm shadow-xs flex items-center gap-2 cursor-pointer"
+                            title="주학습 계획안 보기"
+                        >
+                            <Calendar className="w-4 h-4 text-violet-600" />
+                            <span>주학습 계획안</span>
+                            {currentPlan && (
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            )}
+                        </button>
+
+                        {/* Test Alert Button */}
+                        {currentPlan && (
+                            <button
+                                onClick={handleTriggerTestAlert}
+                                className="px-3.5 py-2.5 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                                title="수업 시작 알림 미리보기"
+                            >
+                                <Bell className="w-4 h-4" />
+                                <span>수업 알림 시연</span>
+                            </button>
+                        )}
+
                         {/* Fullscreen Toggle */}
                         <button
                             onClick={toggleFullscreen}
-                            className="p-2 bg-slate-100 text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-full transition-colors flex items-center justify-center"
+                            className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:bg-violet-50 rounded-xl transition-colors flex items-center justify-center cursor-pointer shadow-xs"
                             aria-label={isFullscreen ? "전체화면 종료" : "전체화면 보기"}
                         >
-                            {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
+                            {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
                         </button>
 
                         {/* Exit Button */}
                         <button
                             onClick={Quit}
-                            className="p-2 bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors flex items-center justify-center"
+                            className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors flex items-center justify-center cursor-pointer shadow-xs"
                             title="프로그램 종료"
                             aria-label="종료"
                         >
-                            <X className="w-6 h-6" />
+                            <X className="w-5 h-5" />
                         </button>
                     </div>
                 </div>
-                <p className="text-lg text-slate-500">
-                    학습할 교과서를 선택하고 이어서 학습을 진행해보세요.
-                </p>
 
-                <div className="mt-6">
-                    <button
-                        onClick={handleAddBook}
-                        disabled={isConverting}
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl shadow-sm transition-all font-medium"
-                    >
-                        {isConverting ? (
-                            <>
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                <span>변환 중... {convertProgress.title && `[${convertProgress.title}] `}({convertProgress.current} / {convertProgress.total})</span>
-                            </>
-                        ) : (
-                            <>
-                                <Plus className="w-5 h-5" />
-                                <span>새 교과서 추가하기 (PDF)</span>
-                            </>
-                        )}
-                    </button>
+                {/* Sub Bar: Weekly Plan Watch Folder & Add PDF Button */}
+                <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    {/* Folder Watcher Info */}
+                    <div className="flex items-center gap-3 text-xs text-slate-600">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-700 shrink-0">
+                            <FolderOpen className="w-4 h-4 text-violet-600" />
+                            <span>계획안 감시 폴더:</span>
+                        </div>
+                        <span className="truncate bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 font-mono text-[11px] text-slate-800 max-w-xs md:max-w-md" title={watchFolder}>
+                            {watchFolder || "지정되지 않음"}
+                        </span>
+                        <button
+                            onClick={async () => {
+                                const folder = await SelectWatchFolderDialog();
+                                if (folder) setWatchFolder(folder);
+                            }}
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold transition-colors cursor-pointer shrink-0"
+                        >
+                            변경
+                        </button>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={async () => {
+                                try {
+                                    const res = await SelectWeeklyPlanFileDialog();
+                                    if (res && res.success) {
+                                        setCurrentPlan(res);
+                                        showToast(`주학습계획안이 분석되었습니다: ${res.title}`);
+                                    }
+                                } catch (e: any) {
+                                    alert(`계획안 파일 로드 실패: ${e.message || e}`);
+                                }
+                            }}
+                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                            <Upload className="w-4 h-4 text-violet-600" />
+                            <span>계획안(HWP) 올리기</span>
+                        </button>
+
+                        <button
+                            onClick={handleAddBook}
+                            disabled={isConverting}
+                            className="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-xl shadow-md shadow-violet-500/20 transition-all font-bold text-sm flex items-center gap-2 cursor-pointer"
+                        >
+                            {isConverting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>{convertProgress.statusText} ({convertProgress.current}/{convertProgress.total})</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Plus className="w-4 h-4" />
+                                    <span>새 교과서 추가 (PDF)</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
+
+                {/* Toast Message */}
+                {toastMessage && (
+                    <div className="mt-4 p-3 bg-violet-600 text-white rounded-xl shadow-lg flex items-center justify-between text-sm animate-in slide-in-from-top duration-300">
+                        <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-yellow-300" />
+                            <span>{toastMessage}</span>
+                        </div>
+                        <button onClick={() => setToastMessage('')} className="p-1 hover:bg-white/20 rounded-md">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
             </header>
 
-            <main className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 mb-16">
+            {/* Main Book Grid */}
+            <main className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-16">
                 {textbooks.map((book) => {
-                    // Read from localStorage to see if there's progress
                     const progressKey = `viewer-progress-${book.id}`;
                     const lastPageStr = localStorage.getItem(progressKey);
                     const lastPage = lastPageStr ? parseInt(lastPageStr, 10) : null;
+                    const offset = book.pageOffset || 0;
 
                     return (
                         <div
                             key={book.id}
                             onClick={() => navigate(`/viewer/${encodeURIComponent(book.id)}`)}
-                            className="group cursor-pointer bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-full relative"
+                            className="group cursor-pointer bg-white rounded-3xl shadow-sm border border-slate-200/80 overflow-hidden hover:shadow-xl hover:border-violet-300 transition-all duration-300 hover:-translate-y-1 flex flex-col h-full relative"
                         >
                             {/* Book cover area */}
                             <div className={`${book.color} aspect-[3/4] flex items-center justify-center relative overflow-hidden`}>
                                 <PdfThumbnail bookId={book.id} />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none"></div>
-                            </div>
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
 
-                            {/* Content area */}
-                            <div className="p-6 flex flex-col flex-grow relative">
-                                <h2 className="text-xl font-bold text-slate-800 mb-2">{book.title}</h2>
+                                {/* Offset setting button on cover */}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOffsetModalBook({
+                                            id: book.id,
+                                            title: book.title,
+                                            numPages: book.numPages || 100,
+                                            initialOffset: offset,
+                                            detectedOffset: null,
+                                        });
+                                    }}
+                                    className="absolute top-3 left-3 px-2.5 py-1.5 bg-black/40 hover:bg-black/70 text-white rounded-xl text-xs font-semibold backdrop-blur-md transition-all flex items-center gap-1.5 shadow-sm opacity-90 group-hover:opacity-100"
+                                    title="실제 쪽수 맞추기 / 오프셋 조정"
+                                >
+                                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                                    <span>쪽수 맞춤</span>
+                                </button>
 
-                                {/* Delete Button */}
+                                {/* Delete Button on cover */}
                                 <button
                                     onClick={(e) => handleDelete(e, book.id)}
-                                    className="absolute top-6 right-6 p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors z-10"
+                                    className="absolute top-3 right-3 p-2 bg-black/40 hover:bg-red-600 text-white rounded-xl backdrop-blur-md transition-all shadow-sm opacity-80 group-hover:opacity-100"
                                     title="교과서 삭제"
                                     aria-label={`${book.title} 삭제`}
                                 >
-                                    <Trash2 className="w-5 h-5" />
+                                    <Trash2 className="w-4 h-4" />
                                 </button>
+                            </div>
 
-                                <div className="mt-auto pt-4 flex items-center justify-between">
+                            {/* Content area */}
+                            <div className="p-5 flex flex-col flex-grow">
+                                <h2 className="text-lg font-bold text-slate-900 mb-1 group-hover:text-violet-600 transition-colors">
+                                    {book.title}
+                                </h2>
+
+                                <div className="text-xs text-slate-400 mb-3 flex items-center gap-2">
+                                    {book.numPages > 0 && <span>총 {book.numPages}페이지</span>}
+                                    <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        <span>오프셋 {offset}</span>
+                                    </span>
+                                </div>
+
+                                <div className="mt-auto pt-3 flex items-center justify-between border-t border-slate-100">
                                     {lastPage ? (
-                                        <span className="text-sm font-medium text-violet-600 bg-violet-50 px-3 py-1 rounded-full border border-violet-100">
+                                        <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2.5 py-1 rounded-lg border border-violet-100">
                                             {lastPage}쪽 이어서 보기
                                         </span>
                                     ) : (
-                                        <span className="text-sm font-medium text-slate-400">
+                                        <span className="text-xs font-medium text-slate-400">
                                             처음부터 보기
                                         </span>
                                     )}
 
-                                    <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-violet-100 group-hover:text-violet-600 transition-colors">
+                                    <div className="w-8 h-8 rounded-xl bg-slate-50 group-hover:bg-violet-600 group-hover:text-white text-slate-400 flex items-center justify-center transition-all shadow-xs">
                                         <ArrowRight className="w-4 h-4" />
                                     </div>
                                 </div>
@@ -342,6 +611,51 @@ export default function MainPage() {
                     );
                 })}
             </main>
+
+            {/* Page Offset Adjust Modal */}
+            {offsetModalBook && (
+                <PageOffsetAdjustModal
+                    isOpen={true}
+                    bookId={offsetModalBook.id}
+                    bookTitle={offsetModalBook.title}
+                    initialOffset={offsetModalBook.initialOffset}
+                    detectedOffset={offsetModalBook.detectedOffset}
+                    numPages={offsetModalBook.numPages}
+                    onClose={() => setOffsetModalBook(null)}
+                    onSaved={async () => {
+                        const updated = await GetTextbooks();
+                        if (updated) setTextbooks(updated);
+                        showToast(`'${offsetModalBook.title}'의 교재 쪽수가 맞춰졌습니다.`);
+                    }}
+                />
+            )}
+
+            {/* Weekly Plan Schedule Modal */}
+            <WeeklyPlanScheduleModal
+                isOpen={isScheduleModalOpen}
+                plan={currentPlan}
+                watchFolder={watchFolder}
+                onClose={() => setIsScheduleModalOpen(false)}
+                onPlanUpdated={(newPlan) => {
+                    setCurrentPlan(newPlan);
+                    showToast("주학습계획안이 업데이트되었습니다.");
+                }}
+                onWatchFolderChanged={(newFolder) => {
+                    setWatchFolder(newFolder);
+                    showToast(`감시 폴더가 '${newFolder}'로 설정되었습니다.`);
+                }}
+                onGoToBook={handleGoToBook}
+            />
+
+            {/* Class Period Alert Modal */}
+            <WeeklyPlanAlertModal
+                isOpen={isAlertModalOpen}
+                period={alertPeriod}
+                periodTime={alertPeriodTime}
+                item={alertItem}
+                onClose={() => setIsAlertModalOpen(false)}
+                onGoToBook={handleGoToBook}
+            />
         </div>
     );
 }

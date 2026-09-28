@@ -1,9 +1,25 @@
 export namespace main {
 	
+	export class Metadata {
+	    numPages: number;
+	    pageOffset: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Metadata(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.numPages = source["numPages"];
+	        this.pageOffset = source["pageOffset"];
+	    }
+	}
 	export class Textbook {
 	    id: string;
 	    title: string;
 	    color: string;
+	    numPages: number;
+	    pageOffset: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Textbook(source);
@@ -14,6 +30,8 @@ export namespace main {
 	        this.id = source["id"];
 	        this.title = source["title"];
 	        this.color = source["color"];
+	        this.numPages = source["numPages"];
+	        this.pageOffset = source["pageOffset"];
 	    }
 	}
 	export class UpdateStatus {
@@ -33,6 +51,70 @@ export namespace main {
 	        this.downloadUrl = source["downloadUrl"];
 	        this.error = source["error"];
 	    }
+	}
+	export class WeeklyPlanItem {
+	    period: number;
+	    subject: string;
+	    matchedBookId: string;
+	    topic: string;
+	    pageStr: string;
+	    startPage: number;
+	    endPage: number;
+	    raw: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WeeklyPlanItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.period = source["period"];
+	        this.subject = source["subject"];
+	        this.matchedBookId = source["matchedBookId"];
+	        this.topic = source["topic"];
+	        this.pageStr = source["pageStr"];
+	        this.startPage = source["startPage"];
+	        this.endPage = source["endPage"];
+	        this.raw = source["raw"];
+	    }
+	}
+	export class WeeklyPlanResult {
+	    success: boolean;
+	    title: string;
+	    filePath: string;
+	    schedule: Record<string, Array<WeeklyPlanItem>>;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WeeklyPlanResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.title = source["title"];
+	        this.filePath = source["filePath"];
+	        this.schedule = this.convertValues(source["schedule"], Array<WeeklyPlanItem>, true);
+	        this.error = source["error"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

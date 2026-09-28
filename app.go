@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -11,35 +12,103 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall" // Added syscall import
+	"sync"
+	"syscall"
+	"time"
 
-	// Added unsafe import
 	"github.com/hashicorp/go-version"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "1.0.0"
+const AppVersion = "1.1.0"
+const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
+
+type WasabiVersionInfo struct {
+	Version     string `json:"version"`
+	ReleaseDate string `json:"releaseDate"`
+	DownloadUrl string `json:"downloadUrl"`
+	Notes       string `json:"notes"`
+}
+
+// AppSettings stores user preferences
+type AppSettings struct {
+	PlanWatchFolder string    `json:"planWatchFolder"`
+	LastPlanFile    string    `json:"lastPlanFile"`
+	LastPlanModTime time.Time `json:"lastPlanModTime"`
+}
 
 // App struct
 type App struct {
-	ctx context.Context
+	ctx             context.Context
+	settings        AppSettings
+	settingsPath    string
+	watcherStopChan chan struct{}
+	watcherMu       sync.Mutex
+	currentPlan     *WeeklyPlanResult
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{
+		watcherStopChan: make(chan struct{}),
+	}
 }
 
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Load settings
+	cwd, err := os.Getwd()
+	if err == nil {
+		a.settingsPath = filepath.Join(cwd, "settings.json")
+		a.loadSettings()
+	}
+
+	// Check and set default watch folder if empty
+	if a.settings.PlanWatchFolder == "" {
+		defaultFolder := filepath.Join(cwd, "weekly_plans")
+		os.MkdirAll(defaultFolder, 0755)
+		a.settings.PlanWatchFolder = defaultFolder
+		a.saveSettings()
+	} else {
+		os.MkdirAll(a.settings.PlanWatchFolder, 0755)
+	}
+
+	// Load existing plan if available
+	a.loadLatestPlan()
+
+	// Start folder watcher
+	go a.startPlanFolderWatcher()
+
+	// Check for updates
 	go func() {
 		status := a.CheckForUpdate()
 		if status != nil && status.HasUpdate {
 			runtime.EventsEmit(a.ctx, "update-available", status)
 		}
 	}()
+}
+
+func (a *App) loadSettings() {
+	if a.settingsPath == "" {
+		return
+	}
+	data, err := os.ReadFile(a.settingsPath)
+	if err == nil {
+		_ = json.Unmarshal(data, &a.settings)
+	}
+}
+
+func (a *App) saveSettings() {
+	if a.settingsPath == "" {
+		return
+	}
+	bytes, err := json.MarshalIndent(a.settings, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(a.settingsPath, bytes, 0644)
+	}
 }
 
 type GitHubRelease struct {
@@ -58,64 +127,68 @@ type UpdateStatus struct {
 }
 
 func (a *App) CheckForUpdate() *UpdateStatus {
-	resp, err := http.Get("https://api.github.com/repos/neohum/classbook/releases/latest")
+	currentVersionStr := strings.TrimPrefix(AppVersion, "v")
+	currentVer, errCurr := version.NewVersion(currentVersionStr)
+
+	client := &http.Client{Timeout: 4 * time.Second}
+
+	// 1. Check Wasabi S3 version.json first
+	wasabiResp, err := client.Get(WasabiVersionUrl)
+	if err == nil && wasabiResp.StatusCode == http.StatusOK {
+		defer wasabiResp.Body.Close()
+		var wasabiInfo WasabiVersionInfo
+		if json.NewDecoder(wasabiResp.Body).Decode(&wasabiInfo) == nil {
+			wasabiVerStr := strings.TrimPrefix(wasabiInfo.Version, "v")
+			wasabiVer, errW := version.NewVersion(wasabiVerStr)
+			if errW == nil && errCurr == nil && wasabiVer.GreaterThan(currentVer) {
+				return &UpdateStatus{
+					HasUpdate:   true,
+					LatestVer:   wasabiInfo.Version,
+					DownloadUrl: wasabiInfo.DownloadUrl,
+				}
+			}
+		}
+	}
+
+	// 2. Fallback: GitHub Releases
+	resp, err := client.Get("https://api.github.com/repos/neohum/classbook/releases/latest")
 	if err != nil {
-		fmt.Println("Error checking for update:", err)
-		return &UpdateStatus{Error: "업데이트 서버에 연결할 수 없습니다. " + err.Error()}
+		return &UpdateStatus{HasUpdate: false, LatestVer: AppVersion}
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		fmt.Println("GitHub API responded with status:", resp.StatusCode)
-		return &UpdateStatus{Error: fmt.Sprintf("서버 응답 오류 (상태 코드: %d)", resp.StatusCode)}
-	}
+	if resp.StatusCode == http.StatusOK {
+		var release GitHubRelease
+		if err := json.NewDecoder(resp.Body).Decode(&release); err == nil {
+			latestVersionStr := strings.TrimPrefix(release.TagName, "v")
+			latestVer, errStr1 := version.NewVersion(latestVersionStr)
+			if errStr1 == nil && errCurr == nil && latestVer.GreaterThan(currentVer) {
+				var downloadUrl string
+				for _, asset := range release.Assets {
+					if strings.HasSuffix(asset.Name, ".exe") {
+						downloadUrl = asset.BrowserDownloadUrl
+						break
+					}
+				}
 
-	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		fmt.Println("Error decoding release JSON:", err)
-		return &UpdateStatus{Error: "업데이트 정보를 해석하는 데 실패했습니다."}
-	}
-
-	latestVersionStr := strings.TrimPrefix(release.TagName, "v")
-	currentVersionStr := strings.TrimPrefix(AppVersion, "v")
-
-	latestVer, errStr1 := version.NewVersion(latestVersionStr)
-	currentVer, errStr2 := version.NewVersion(currentVersionStr)
-
-	if errStr1 != nil || errStr2 != nil {
-		fmt.Println("Error parsing versions:", errStr1, errStr2)
-		return &UpdateStatus{Error: "버전 정보를 비교하는 중 오류가 발생했습니다."}
-	}
-
-	if latestVer.GreaterThan(currentVer) {
-		var downloadUrl string
-		for _, asset := range release.Assets {
-			if strings.HasSuffix(asset.Name, ".exe") {
-				downloadUrl = asset.BrowserDownloadUrl
-				break
-			}
-		}
-
-		if downloadUrl != "" {
-			return &UpdateStatus{
-				HasUpdate:   true,
-				LatestVer:   release.TagName,
-				DownloadUrl: downloadUrl,
+				if downloadUrl != "" {
+					return &UpdateStatus{
+						HasUpdate:   true,
+						LatestVer:   release.TagName,
+						DownloadUrl: downloadUrl,
+					}
+				}
 			}
 		}
 	}
 
 	return &UpdateStatus{
 		HasUpdate: false,
-		LatestVer: release.TagName,
+		LatestVer: AppVersion,
 	}
 }
 
 func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
-	// Show a small popup that it's downloading
-	// A simple indeteriminate dialog or just log... there's no native progress dialog in Wails,
-	// so we simply fetch it and launch it.
-
 	tempDir := os.TempDir()
 	installerPath := filepath.Join(tempDir, fmt.Sprintf("classbook-setup-%s.exe", tagName))
 
@@ -139,9 +212,8 @@ func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
 		return
 	}
 
-	out.Close() // Ensure it's closed before executing
+	out.Close()
 
-	// Launch the installer
 	cmd := exec.Command(installerPath)
 	err = cmd.Start()
 	if err != nil {
@@ -149,7 +221,6 @@ func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
 		return
 	}
 
-	// Exit the current application so the installer can overwrite files
 	os.Exit(0)
 }
 
@@ -186,14 +257,16 @@ func (a *App) Greet(name string) string {
 
 // Textbook represents a book available in the viewer
 type Textbook struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Color string `json:"color"`
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	Color      string `json:"color"`
+	NumPages   int    `json:"numPages"`
+	PageOffset int    `json:"pageOffset"`
 }
 
 var colors = []string{"bg-orange-500", "bg-orange-400", "bg-blue-500", "bg-blue-400", "bg-green-500", "bg-rose-500", "bg-purple-500"}
 
-// GetTextbooks scans the book/images directory and returns available textbooks
+// GetTextbooks scans the book/images directory and returns available textbooks with their metadata
 func (a *App) GetTextbooks() ([]Textbook, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -214,13 +287,27 @@ func (a *App) GetTextbooks() ([]Textbook, error) {
 	for _, entry := range entries {
 		if entry.IsDir() {
 			title := entry.Name()
-			// Generate a color pseudo-randomly based on name length or use sequence
 			color := colors[colorIdx%len(colors)]
 			colorIdx++
+
+			numPages := 0
+			pageOffset := 0
+
+			metaPath := filepath.Join(imagesDir, title, "metadata.json")
+			if metaBytes, err := os.ReadFile(metaPath); err == nil {
+				var meta Metadata
+				if json.Unmarshal(metaBytes, &meta) == nil {
+					numPages = meta.NumPages
+					pageOffset = meta.PageOffset
+				}
+			}
+
 			books = append(books, Textbook{
-				ID:    title,
-				Title: title, // Using directory name as title
-				Color: color,
+				ID:         title,
+				Title:      title,
+				Color:      color,
+				NumPages:   numPages,
+				PageOffset: pageOffset,
 			})
 		}
 	}
@@ -228,7 +315,8 @@ func (a *App) GetTextbooks() ([]Textbook, error) {
 }
 
 type Metadata struct {
-	NumPages int `json:"numPages"`
+	NumPages   int `json:"numPages"`
+	PageOffset int `json:"pageOffset"`
 }
 
 // SelectPdfDialog opens a file dialog to pick a PDF. It returns the absolute path.
@@ -254,7 +342,6 @@ func (a *App) SelectMultiplePdfsDialog() ([]string, error) {
 }
 
 // ReadFileBase64 reads a local file and returns its content as a base64 string
-// so the frontend PDF.js worker can parse it directly from memory
 func (a *App) ReadFileBase64(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -263,8 +350,13 @@ func (a *App) ReadFileBase64(path string) (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-// EnsureBookDir creates the book directory and generates metadata if needed
+// EnsureBookDir creates the book directory and generates metadata with optional offset
 func (a *App) EnsureBookDir(title string, numPages int) error {
+	return a.EnsureBookDirWithOffset(title, numPages, 0)
+}
+
+// EnsureBookDirWithOffset creates the book directory and writes metadata with pageOffset
+func (a *App) EnsureBookDirWithOffset(title string, numPages int, pageOffset int) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -274,9 +366,50 @@ func (a *App) EnsureBookDir(title string, numPages int) error {
 		return err
 	}
 
-	meta := Metadata{NumPages: numPages}
-	metaBytes, _ := json.Marshal(meta)
+	meta := Metadata{
+		NumPages:   numPages,
+		PageOffset: pageOffset,
+	}
+	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
 	return os.WriteFile(filepath.Join(bookDir, "metadata.json"), metaBytes, 0644)
+}
+
+// UpdateBookOffset updates only the pageOffset in the metadata.json of the book
+func (a *App) UpdateBookOffset(title string, pageOffset int) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	metaPath := filepath.Join(cwd, "book", "images", title, "metadata.json")
+	var meta Metadata
+	if data, err := os.ReadFile(metaPath); err == nil {
+		_ = json.Unmarshal(data, &meta)
+	}
+	meta.PageOffset = pageOffset
+
+	metaBytes, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(metaPath, metaBytes, 0644)
+}
+
+// GetBookMetadata reads metadata for a specific textbook
+func (a *App) GetBookMetadata(title string) (*Metadata, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	metaPath := filepath.Join(cwd, "book", "images", title, "metadata.json")
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return nil, err
+	}
+	var meta Metadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
 }
 
 // SavePageImage saves a base64 encoded jpeg into the book's image directory
@@ -287,7 +420,6 @@ func (a *App) SavePageImage(title string, pageNum int, base64Data string) error 
 	}
 	bookDir := filepath.Join(cwd, "book", "images", title)
 
-	// Trim the data URL prefix if it exists
 	idx := strings.Index(base64Data, ";base64,")
 	if idx != -1 {
 		base64Data = base64Data[idx+8:]
@@ -310,10 +442,221 @@ func (a *App) DeleteBook(title string) error {
 	}
 	bookDir := filepath.Join(cwd, "book", "images", title)
 
-	// Simple security check to avoid deleting outside of books directory
 	if !strings.HasPrefix(bookDir, filepath.Join(cwd, "book", "images")) {
 		return fmt.Errorf("invalid book directory")
 	}
 
 	return os.RemoveAll(bookDir)
+}
+
+// ==========================================
+// Weekly Lesson Plan (주학습계획안) Features
+// ==========================================
+
+type WeeklyPlanItem struct {
+	Period        int    `json:"period"`
+	Subject       string `json:"subject"`
+	MatchedBookId string `json:"matchedBookId"`
+	Topic         string `json:"topic"`
+	PageStr       string `json:"pageStr"`
+	StartPage     int    `json:"startPage"`
+	EndPage       int    `json:"endPage"`
+	Raw           string `json:"raw"`
+}
+
+type WeeklyPlanResult struct {
+	Success  bool                        `json:"success"`
+	Title    string                      `json:"title"`
+	FilePath string                      `json:"filePath"`
+	Schedule map[string][]WeeklyPlanItem `json:"schedule"`
+	Error    string                      `json:"error,omitempty"`
+}
+
+// SelectWatchFolderDialog opens directory chooser for watching weekly plans
+func (a *App) SelectWatchFolderDialog() (string, error) {
+	folder, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "주학습계획안 감시 폴더 선택",
+	})
+	if err != nil || folder == "" {
+		return a.settings.PlanWatchFolder, err
+	}
+
+	a.settings.PlanWatchFolder = folder
+	a.saveSettings()
+	return folder, nil
+}
+
+// GetWatchFolder returns currently configured watch folder
+func (a *App) GetWatchFolder() string {
+	return a.settings.PlanWatchFolder
+}
+
+// SetWatchFolder sets the watch folder path directly
+func (a *App) SetWatchFolder(folderPath string) error {
+	if _, err := os.Stat(folderPath); err != nil {
+		if err := os.MkdirAll(folderPath, 0755); err != nil {
+			return err
+		}
+	}
+	a.settings.PlanWatchFolder = folderPath
+	a.saveSettings()
+	return nil
+}
+
+// SelectWeeklyPlanFileDialog lets user pick a .hwp or .hwpx file directly
+func (a *App) SelectWeeklyPlanFileDialog() (*WeeklyPlanResult, error) {
+	filename, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "주학습계획안 파일 선택 (HWP, HWPX)",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "주학습계획안 파일 (*.hwp, *.hwpx)", Pattern: "*.hwp;*.hwpx"},
+		},
+	})
+	if err != nil || filename == "" {
+		return nil, err
+	}
+
+	return a.ParseWeeklyPlanFile(filename)
+}
+
+// ParseWeeklyPlanFile executes the Python script to parse a HWP or HWPX file
+func (a *App) ParseWeeklyPlanFile(filePath string) (*WeeklyPlanResult, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	scriptPath := filepath.Join(cwd, "parse_weekly_plan.py")
+
+	cmd := exec.Command("python", scriptPath, filePath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	var outBuf bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	err = cmd.Run()
+	if err != nil {
+		errMsg := errBuf.String()
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return nil, fmt.Errorf("주학습계획안 분석 오류: %s", errMsg)
+	}
+
+	var result WeeklyPlanResult
+	if err := json.Unmarshal(outBuf.Bytes(), &result); err != nil {
+		return nil, fmt.Errorf("분석 결과 해석 오류: %v, 출력: %s", err, outBuf.String())
+	}
+
+	result.FilePath = filePath
+
+	// Save to memory and cache file
+	a.currentPlan = &result
+	a.saveCurrentPlan()
+
+	return &result, nil
+}
+
+// GetLatestWeeklyPlan returns the currently parsed weekly plan
+func (a *App) GetLatestWeeklyPlan() (*WeeklyPlanResult, error) {
+	if a.currentPlan != nil {
+		return a.currentPlan, nil
+	}
+	return a.loadLatestPlan()
+}
+
+func (a *App) saveCurrentPlan() {
+	if a.currentPlan == nil {
+		return
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	cacheFile := filepath.Join(cwd, "latest_weekly_plan.json")
+	data, err := json.MarshalIndent(a.currentPlan, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(cacheFile, data, 0644)
+	}
+}
+
+func (a *App) loadLatestPlan() (*WeeklyPlanResult, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	cacheFile := filepath.Join(cwd, "latest_weekly_plan.json")
+	data, err := os.ReadFile(cacheFile)
+	if err != nil {
+		return nil, err
+	}
+	var plan WeeklyPlanResult
+	if err := json.Unmarshal(data, &plan); err != nil {
+		return nil, err
+	}
+	a.currentPlan = &plan
+	return &plan, nil
+}
+
+// startPlanFolderWatcher monitors the designated folder for new or modified hwp/hwpx files
+func (a *App) startPlanFolderWatcher() {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-a.watcherStopChan:
+			return
+		case <-ticker.C:
+			watchFolder := a.settings.PlanWatchFolder
+			if watchFolder == "" {
+				continue
+			}
+
+			entries, err := os.ReadDir(watchFolder)
+			if err != nil {
+				continue
+			}
+
+			var latestFile string
+			var latestModTime time.Time
+
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				ext := strings.ToLower(filepath.Ext(entry.Name()))
+				if ext == ".hwp" || ext == ".hwpx" {
+					info, err := entry.Info()
+					if err != nil {
+						continue
+					}
+					if info.ModTime().After(latestModTime) {
+						latestModTime = info.ModTime()
+						latestFile = filepath.Join(watchFolder, entry.Name())
+					}
+				}
+			}
+
+			// If a new or updated file is detected
+			if latestFile != "" {
+				if latestFile != a.settings.LastPlanFile || latestModTime.After(a.settings.LastPlanModTime) {
+					fmt.Printf("[FolderWatcher] New plan file detected: %s (mod: %v)\n", latestFile, latestModTime)
+
+					result, err := a.ParseWeeklyPlanFile(latestFile)
+					if err == nil && result.Success {
+						a.settings.LastPlanFile = latestFile
+						a.settings.LastPlanModTime = latestModTime
+						a.saveSettings()
+
+						// Notify frontend
+						runtime.EventsEmit(a.ctx, "weekly-plan-updated", result)
+					} else {
+						fmt.Printf("[FolderWatcher] Failed to parse: %v\n", err)
+					}
+				}
+			}
+		}
+	}
 }

@@ -1,0 +1,116 @@
+{
+  "success": true,
+  "title": "3월4주_주간학습안내",
+  "schedule": {
+    "월": [
+      {
+        "period": 1,
+        "subject": "국어",
+        "matchedBookId": "국어1-1가",
+        "topic": "글자의 짜임",
+        "pageStr": "34~37쪽",
+        "startPage": 34,
+        "endPage": 37,
+        "raw": "국어\n글자의 짜임(34~37쪽)"
+      },
+      {
+        "period": 2,
+        "subject": "수학",
+        "matchedBookId": "수학1-1",
+        "topic": "순서를 알아봐요",
+        "pageStr": "24~27쪽",
+        "startPage": 24,
+        "endPage": 27,
+        "raw": "수학\n순서를 알아봐요(24~27쪽)"
+      }
+    ],
+    "화": [
+      {
+        "period": 1,
+        "subject": "수학",
+        "matchedBookId": "수학1-1",
+        "topic": "몇 개일까요",
+        "pageStr": "20~23쪽",
+        "startPage": 20,
+        "endPage": 23,
+        "raw": "수학\n몇 개일까요(20~23쪽)"
+      },
+      {
+        "period": 2,
+        "subject": "국어",
+        "matchedBookId": "국어1-1가",
+        "topic": "바르게 읽기",
+        "pageStr": "38~41쪽",
+        "startPage": 38,
+        "endPage": 41,
+        "raw": "국어\n바르게 읽기(38~41쪽)"
+      }
+    ],
+    "수": [
+      {
+        "period": 1,
+        "subject": "학교",
+        "matchedBookId": "학교1-1",
+        "topic": "우리 학교",
+        "pageStr": "12~15쪽",
+        "startPage": 12,
+        "endPage": 15,
+        "raw": "학교\n우리 학교(12~15쪽)"
+      },
+      {
+        "period": 2,
+        "subject": "학교",
+        "matchedBookId": "학교1-1",
+        "topic": "친구와 사이좋게",
+        "pageStr": "16~19쪽",
+        "startPage": 16,
+        "endPage": 19,
+        "raw": "학교\n친구와 사이좋게(16~19쪽)"
+      }
+    ],
+    "목": [
+      {
+        "period": 1,
+        "subject": "국어활동",
+        "matchedBookId": "국어활동1-1",
+        "topic": "낱말 익히기",
+        "pageStr": "10~13쪽",
+        "startPage": 10,
+        "endPage": 13,
+        "raw": "국어활동\n낱말 익히기(10~13쪽)"
+      },
+      {
+        "period": 2,
+        "subject": "수학",
+        "matchedBookId": "수학1-1",
+        "topic": "모양 만들기",
+        "pageStr": "28~31쪽",
+        "startPage": 28,
+        "endPage": 31,
+        "raw": "수학\n모양 만들기(28~31쪽)"
+      }
+    ],
+    "금": [
+      {
+        "period": 1,
+        "subject": "수학익힘",
+        "matchedBookId": "수학익힘1-1",
+        "topic": "연습하기",
+        "pageStr": "8~9쪽",
+        "startPage": 8,
+        "endPage": 9,
+        "raw": "수학익힘\n연습하기(8~9쪽)"
+      },
+      {
+        "period": 2,
+        "subject": "국어",
+        "matchedBookId": "국어1-1가",
+        "topic": "이야기 듣기",
+        "pageStr": "42~45쪽",
+        "startPage": 42,
+        "endPage": 45,
+        "raw": "국어\n이야기 듣기(42~45쪽)"
+      }
+    ]
+  }
+}

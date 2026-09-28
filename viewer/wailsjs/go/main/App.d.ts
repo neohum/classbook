@@ -10,11 +10,21 @@ export function DownloadAndInstallUpdate(arg1:string,arg2:string):Promise<void>;
 
 export function EnsureBookDir(arg1:string,arg2:number):Promise<void>;
 
+export function EnsureBookDirWithOffset(arg1:string,arg2:number,arg3:number):Promise<void>;
+
 export function GetAppVersion():Promise<string>;
+
+export function GetBookMetadata(arg1:string):Promise<main.Metadata>;
+
+export function GetLatestWeeklyPlan():Promise<main.WeeklyPlanResult>;
 
 export function GetTextbooks():Promise<Array<main.Textbook>>;
 
+export function GetWatchFolder():Promise<string>;
+
 export function Greet(arg1:string):Promise<string>;
+
+export function ParseWeeklyPlanFile(arg1:string):Promise<main.WeeklyPlanResult>;
 
 export function ReadFileBase64(arg1:string):Promise<string>;
 
@@ -24,4 +34,12 @@ export function SelectMultiplePdfsDialog():Promise<Array<string>>;
 
 export function SelectPdfDialog():Promise<string>;
 
+export function SelectWatchFolderDialog():Promise<string>;
+
+export function SelectWeeklyPlanFileDialog():Promise<main.WeeklyPlanResult>;
+
+export function SetWatchFolder(arg1:string):Promise<void>;
+
 export function StartDrag():Promise<void>;
+
+export function UpdateBookOffset(arg1:string,arg2:number):Promise<void>;

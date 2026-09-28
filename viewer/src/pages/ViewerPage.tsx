@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen, Minus } from 'lucide-react';
-import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, WindowMinimise } from '../../wailsjs/runtime/runtime';
-import { StartDrag, GetAppVersion, CheckForUpdate } from '../../wailsjs/go/main/App';
+import React, { useEffect, useState, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen, Minus, Calendar } from 'lucide-react';
+import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, WindowMinimise, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatchFolder, UpdateBookOffset } from '../../wailsjs/go/main/App';
+import { main } from '../../wailsjs/go/models';
+import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
+import WeeklyPlanScheduleModal from '../components/WeeklyPlanScheduleModal';
 
 interface ScheduleItem {
     id: string;
@@ -185,6 +188,7 @@ function PageRenderer({ bookId, pageNumber, scale }: { bookId: string, pageNumbe
 
 export default function ViewerPage() {
     const { bookId } = useParams<{ bookId: string }>();
+    const [searchParams] = useSearchParams();
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [numPages, setNumPages] = useState<number>(0);
     const [inputPage, setInputPage] = useState<string>("1");
@@ -194,6 +198,16 @@ export default function ViewerPage() {
 
     // Page Offset sync
     const [pageOffset, setPageOffset] = useState<number>(0);
+
+    // Weekly Plan States
+    const [currentPlan, setCurrentPlan] = useState<main.WeeklyPlanResult | null>(null);
+    const [watchFolder, setWatchFolder] = useState<string>('');
+    const [isWeeklyPlanModalOpen, setIsWeeklyPlanModalOpen] = useState<boolean>(false);
+    const [isClassAlertOpen, setIsClassAlertOpen] = useState<boolean>(false);
+    const [alertPeriod, setAlertPeriod] = useState<number>(1);
+    const [alertPeriodTime, setAlertPeriodTime] = useState<string>('');
+    const [alertItem, setAlertItem] = useState<main.WeeklyPlanItem | null>(null);
+    const lastClassAlertMinuteRef = useRef<string>('');
 
     useEffect(() => {
         if (bookId) {
@@ -206,12 +220,33 @@ export default function ViewerPage() {
         }
     }, [bookId]);
 
+    // Load initial weekly plan and watch folder
+    useEffect(() => {
+        GetLatestWeeklyPlan().then(plan => {
+            if (plan && plan.success) setCurrentPlan(plan);
+        }).catch(console.error);
+
+        GetWatchFolder().then(folder => {
+            if (folder) setWatchFolder(folder);
+        }).catch(console.error);
+
+        const handlePlanUpdate = (plan: main.WeeklyPlanResult) => {
+            if (plan && plan.success) {
+                setCurrentPlan(plan);
+            }
+        };
+
+        EventsOn('weekly-plan-updated', handlePlanUpdate);
+        return () => EventsOff('weekly-plan-updated');
+    }, []);
+
     const handleOffsetChange = (newPrintedPage: number) => {
         if (isNaN(newPrintedPage)) return;
         const newOffset = currentPage - newPrintedPage;
         setPageOffset(newOffset);
         if (bookId) {
             localStorage.setItem(`pageOffset_${bookId}`, newOffset.toString());
+            UpdateBookOffset(bookId, newOffset).catch(console.error);
         }
     };
 
@@ -893,13 +928,32 @@ export default function ViewerPage() {
 
                 setNumPages(data.numPages);
 
-                // Load saved progress
+                let effectiveOffset = pageOffset;
+                if (data.pageOffset !== undefined && data.pageOffset !== null) {
+                    effectiveOffset = data.pageOffset;
+                    setPageOffset(data.pageOffset);
+                    localStorage.setItem(`pageOffset_${bookId}`, data.pageOffset.toString());
+                }
+
+                // Check URL param ?targetPage=X
+                const targetPageParam = searchParams.get('targetPage');
+                if (targetPageParam) {
+                    const parsedTarget = parseInt(targetPageParam, 10);
+                    if (!isNaN(parsedTarget) && parsedTarget > 0) {
+                        const targetPhysical = Math.min(Math.max(1, parsedTarget + effectiveOffset), data.numPages);
+                        setCurrentPage(targetPhysical);
+                        setInputPage(parsedTarget.toString());
+                        return;
+                    }
+                }
+
+                // Load saved progress if no targetPage param
                 const savedPage = localStorage.getItem(`viewer-progress-${bookId}`);
                 if (savedPage) {
                     const parsed = parseInt(savedPage, 10);
                     if (!isNaN(parsed) && parsed >= 1 && parsed <= data.numPages) {
                         setCurrentPage(parsed);
-                        setInputPage(parsed.toString()); // Sync input
+                        setInputPage((parsed - effectiveOffset).toString());
                     }
                 }
             } catch (error) {
@@ -910,7 +964,7 @@ export default function ViewerPage() {
         };
 
         loadMetadata();
-    }, [bookId]);
+    }, [bookId, searchParams]);
 
     // Save progress when page changes
     useEffect(() => {
@@ -924,6 +978,64 @@ export default function ViewerPage() {
 
     const goToPrevPage = () => {
         setCurrentPage(prev => Math.max(1, prev - 1));
+    };
+
+    // Time-based Class Alert Checker inside ViewerPage
+    useEffect(() => {
+        const checkClassTime = () => {
+            if (!currentPlan || !currentPlan.schedule) return;
+
+            const now = new Date();
+            const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+            if (dayOfWeek === '일' || dayOfWeek === '토') return;
+
+            const hh = now.getHours().toString().padStart(2, '0');
+            const mm = now.getMinutes().toString().padStart(2, '0');
+            const currentTimeStr = `${hh}:${mm}`;
+
+            if (lastClassAlertMinuteRef.current === currentTimeStr) return;
+
+            const periods = [
+                { period: 1, startTime: '09:00', endTime: '09:40' },
+                { period: 2, startTime: '09:50', endTime: '10:30' },
+                { period: 3, startTime: '10:40', endTime: '11:20' },
+                { period: 4, startTime: '11:30', endTime: '12:10' },
+                { period: 5, startTime: '13:00', endTime: '13:40' },
+                { period: 6, startTime: '13:50', endTime: '14:30' },
+            ];
+
+            for (const sched of periods) {
+                if (sched.startTime === currentTimeStr) {
+                    lastClassAlertMinuteRef.current = currentTimeStr;
+                    const dayItems = currentPlan.schedule[dayOfWeek] || [];
+                    const foundItem = dayItems.find(it => it.period === sched.period);
+
+                    if (foundItem) {
+                        setAlertPeriod(sched.period);
+                        setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
+                        setAlertItem(foundItem);
+                        setIsClassAlertOpen(true);
+                    }
+                    break;
+                }
+            }
+        };
+
+        const timer = setInterval(checkClassTime, 1000);
+        return () => clearInterval(timer);
+    }, [currentPlan]);
+
+    const handleGoToWeeklyBook = (targetBookId: string, targetPrintedPage: number) => {
+        setIsClassAlertOpen(false);
+        setIsWeeklyPlanModalOpen(false);
+
+        if (targetBookId === bookId || !targetBookId) {
+            const physical = Math.min(Math.max(1, targetPrintedPage + pageOffset), numPages);
+            setCurrentPage(physical);
+            setInputPage(targetPrintedPage.toString());
+        } else {
+            navigate(`/viewer/${encodeURIComponent(targetBookId)}?targetPage=${targetPrintedPage}`);
+        }
     };
 
     // Swipe Handlers
@@ -1019,6 +1131,16 @@ export default function ViewerPage() {
                     </form>
 
                     {renderTimerButton('top')}
+
+                    {/* Weekly Plan Schedule Button */}
+                    <button
+                        onClick={() => setIsWeeklyPlanModalOpen(true)}
+                        className="p-1.5 sm:p-2 bg-slate-800 border-slate-700 hover:border-violet-500 text-slate-300 hover:text-white rounded-full border transition-colors flex items-center gap-1 cursor-pointer"
+                        title="주학습 계획안 보기"
+                    >
+                        <Calendar className="w-4 h-4 text-violet-400" />
+                        <span className="text-xs font-semibold hidden md:inline px-1">계획안</span>
+                    </button>
 
                     {/* Pen Tool Launch */}
                     <button
@@ -1380,6 +1502,27 @@ export default function ViewerPage() {
                     </div>
                 </div>
             )}
+
+            {/* Weekly Plan Schedule Modal */}
+            <WeeklyPlanScheduleModal
+                isOpen={isWeeklyPlanModalOpen}
+                plan={currentPlan}
+                watchFolder={watchFolder}
+                onClose={() => setIsWeeklyPlanModalOpen(false)}
+                onPlanUpdated={(newPlan) => setCurrentPlan(newPlan)}
+                onWatchFolderChanged={(newFolder) => setWatchFolder(newFolder)}
+                onGoToBook={handleGoToWeeklyBook}
+            />
+
+            {/* Class Period Alert Modal */}
+            <WeeklyPlanAlertModal
+                isOpen={isClassAlertOpen}
+                period={alertPeriod}
+                periodTime={alertPeriodTime}
+                item={alertItem}
+                onClose={() => setIsClassAlertOpen(false)}
+                onGoToBook={handleGoToWeeklyBook}
+            />
         </div>
     );
 }
