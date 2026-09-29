@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "주학습 계획안 rhwp 기반 고화질 HTML 뷰어 연동 및 양쪽 사이드바 교과서 바꾸기 기능 추가 (v1.2.8)"
+    notes = "주안 재인식 기능 및 HWP 파서 요일 집중 방지 개선, 시종 알림 3초 자동 닫힘 및 교과명/쪽수 상시 유지 위젯 추가 (v1.2.9)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

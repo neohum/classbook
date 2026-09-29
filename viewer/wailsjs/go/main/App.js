@@ -58,6 +58,10 @@ export function ReadFileBase64(arg1) {
   return window['go']['main']['App']['ReadFileBase64'](arg1);
 }
 
+export function ReanalyzeWeeklyPlan() {
+  return window['go']['main']['App']['ReanalyzeWeeklyPlan']();
+}
+
 export function SavePageImage(arg1, arg2, arg3) {
   return window['go']['main']['App']['SavePageImage'](arg1, arg2, arg3);
 }

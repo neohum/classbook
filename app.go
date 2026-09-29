@@ -24,7 +24,7 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.8"
+const AppVersion = "1.2.9"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -628,6 +628,59 @@ func (a *App) ParseWeeklyPlanFile(filePath string) (*WeeklyPlanResult, error) {
 	a.saveCurrentPlan()
 
 	return &result, nil
+}
+
+// ReanalyzeWeeklyPlan forces re-parsing the current weekly plan file or the newest file in the watch folder
+func (a *App) ReanalyzeWeeklyPlan() (*WeeklyPlanResult, error) {
+	targetFile := ""
+	if a.currentPlan != nil && a.currentPlan.FilePath != "" {
+		targetFile = a.currentPlan.FilePath
+	}
+	if targetFile == "" && a.settings.LastPlanFile != "" {
+		targetFile = a.settings.LastPlanFile
+	}
+	if targetFile == "" {
+		watchFolder := a.settings.PlanWatchFolder
+		if watchFolder != "" {
+			entries, err := os.ReadDir(watchFolder)
+			if err == nil {
+				var latestMod time.Time
+				for _, e := range entries {
+					if !e.IsDir() {
+						ext := strings.ToLower(filepath.Ext(e.Name()))
+						if ext == ".hwp" || ext == ".hwpx" {
+							if info, err := e.Info(); err == nil {
+								if info.ModTime().After(latestMod) {
+									latestMod = info.ModTime()
+									targetFile = filepath.Join(watchFolder, e.Name())
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if targetFile == "" {
+		return nil, fmt.Errorf("재인식할 주학습계획안 파일이 없습니다. [HWP / HWPX 파일 올리기]로 파일을 선택해주세요.")
+	}
+
+	result, err := a.ParseWeeklyPlanFile(targetFile)
+	if err != nil {
+		return nil, err
+	}
+
+	a.settings.LastPlanFile = targetFile
+	if info, err := os.Stat(targetFile); err == nil {
+		a.settings.LastPlanModTime = info.ModTime()
+	}
+	a.saveSettings()
+
+	// Notify frontend
+	runtime.EventsEmit(a.ctx, "weekly-plan-updated", result)
+
+	return result, nil
 }
 
 // GetLatestWeeklyPlan returns the currently parsed weekly plan

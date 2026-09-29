@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BookOpen, X, ArrowRight, Clock, Sparkles, Bell, Coffee } from 'lucide-react';
 import { main } from '../../wailsjs/go/models';
 
@@ -23,6 +23,27 @@ export default function WeeklyPlanAlertModal({
     onClose,
     onGoToBook
 }: Props) {
+    const [timeLeft, setTimeLeft] = useState<number>(3);
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        setTimeLeft(3);
+
+        const interval = setInterval(() => {
+            setTimeLeft(prev => Math.max(0, prev - 1));
+        }, 1000);
+
+        const timer = setTimeout(() => {
+            onClose();
+        }, 3000);
+
+        return () => {
+            clearTimeout(timer);
+            clearInterval(interval);
+        };
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     const targetPage = item?.startPage || 1;
@@ -53,11 +74,17 @@ export default function WeeklyPlanAlertModal({
                 </button>
 
                 {/* Badge */}
-                <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full ${isRestTime ? 'bg-amber-500/20 border-amber-400/40 text-amber-300' : 'bg-violet-500/20 border-violet-400/40 text-violet-300'} border font-bold text-sm mb-4`}>
+                <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full ${isRestTime ? 'bg-amber-500/20 border-amber-400/40 text-amber-300' : 'bg-violet-500/20 border-violet-400/40 text-violet-300'} border font-bold text-sm mb-2`}>
                     {isRestTime ? <Coffee className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
                     <span>
                         {periodName} {isRestTime ? "쉬는 시간 안내" : "수업 시작 안내"} {periodTime && `(${periodTime})`}
                     </span>
+                </div>
+
+                {/* Auto Dismiss Countdown Indicator */}
+                <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400 mb-4 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                    <span><strong>{timeLeft}초</strong> 뒤 자동으로 사라집니다</span>
                 </div>
 
                 {/* Animated Icon */}
@@ -143,6 +170,17 @@ export default function WeeklyPlanAlertModal({
                     >
                         닫기
                     </button>
+                </div>
+
+                {/* Animated 3-second progress bar */}
+                <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/10 overflow-hidden">
+                    <div
+                        className={`h-full ${isRestTime ? 'bg-amber-400' : 'bg-violet-400'} transition-all ease-linear`}
+                        style={{
+                            width: `${(timeLeft / 3) * 100}%`,
+                            transitionDuration: '1000ms'
+                        }}
+                    />
                 </div>
             </div>
         </div>

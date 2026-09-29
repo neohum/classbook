@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Calendar, FolderOpen, Upload, BookOpen, Clock, ArrowRight, CheckCircle2, FileText, Sparkles } from 'lucide-react';
+import { X, Calendar, FolderOpen, Upload, BookOpen, Clock, ArrowRight, CheckCircle2, FileText, Sparkles, RotateCw, Loader2 } from 'lucide-react';
 import { main } from '../../wailsjs/go/models';
-import { SelectWatchFolderDialog, SelectWeeklyPlanFileDialog } from '../../wailsjs/go/main/App';
+import { SelectWatchFolderDialog, SelectWeeklyPlanFileDialog, ReanalyzeWeeklyPlan } from '../../wailsjs/go/main/App';
 import HwpHtmlViewerModal from './HwpHtmlViewerModal';
 
 interface Props {
@@ -29,6 +29,7 @@ export default function WeeklyPlanScheduleModal({
     const initialDay = (todayIndex >= 1 && todayIndex <= 5) ? DAY_LABELS[todayIndex - 1] : '월';
     const [selectedDay, setSelectedDay] = useState<string>(initialDay);
     const [isLoading, setIsLoading] = useState(false);
+    const [isReanalyzing, setIsReanalyzing] = useState(false);
     const [isHwpHtmlViewerOpen, setIsHwpHtmlViewerOpen] = useState(false);
 
     if (!isOpen) return null;
@@ -58,6 +59,23 @@ export default function WeeklyPlanScheduleModal({
             alert(`파일 분석 오류: ${err.message || err}`);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleReanalyze = async () => {
+        try {
+            setIsReanalyzing(true);
+            const res = await ReanalyzeWeeklyPlan();
+            if (res && res.success) {
+                onPlanUpdated(res);
+                alert(`최신 분석 알고리즘으로 주학습계획안을 다시 인식(분석)하였습니다!\n(${res.title})\n\n요일별 교시가 정상 반영되었습니다.`);
+            } else {
+                alert("재인식 결과 데이터 분석에 실패했습니다. 파일을 다시 올려주세요.");
+            }
+        } catch (err: any) {
+            alert(`재인식 오류: ${err.message || err}`);
+        } finally {
+            setIsReanalyzing(false);
         }
     };
 
@@ -120,14 +138,26 @@ export default function WeeklyPlanScheduleModal({
                             </button>
                         </div>
 
-                        <button
-                            onClick={handleSelectFile}
-                            disabled={isLoading}
-                            className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-semibold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                        >
-                            <Upload className="w-3.5 h-3.5" />
-                            <span>{isLoading ? "분석 중..." : "HWP / HWPX 파일 올리기"}</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleReanalyze}
+                                disabled={isReanalyzing || isLoading}
+                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                title="현재 주학습계획안 파일을 최신 분석 알고리즘으로 다시 인식(분석)합니다"
+                            >
+                                <RotateCw className={`w-3.5 h-3.5 ${isReanalyzing ? 'animate-spin' : ''}`} />
+                                <span>{isReanalyzing ? "재인식 중..." : "다시 분석(재인식)"}</span>
+                            </button>
+
+                            <button
+                                onClick={handleSelectFile}
+                                disabled={isLoading || isReanalyzing}
+                                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-semibold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>{isLoading ? "분석 중..." : "HWP / HWPX 파일 올리기"}</span>
+                            </button>
+                        </div>
                     </div>
 
                 {/* Day Tabs */}

@@ -198,6 +198,7 @@ def parse_hwp(filepath):
     section_streams = [s for s in ole.listdir() if s[0] == 'BodyText' and s[1].startswith('Section')]
     
     extracted_paragraphs = []
+    full_tables = []
     
     for s_entry in section_streams:
         stream_data = ole.openstream(s_entry).read()
@@ -213,6 +214,25 @@ def parse_hwp(filepath):
         # Parse HWP records
         offset = 0
         total_len = len(stream_data)
+        
+        current_table_cells = {} # (row, col) -> list of strings
+        current_cell = None
+        max_row = -1
+        max_col = -1
+
+        def finalize_table():
+            nonlocal current_table_cells, current_cell, max_row, max_col
+            if current_table_cells and max_row >= 1 and max_col >= 2:
+                matrix = [["" for _ in range(max_col + 1)] for _ in range(max_row + 1)]
+                for (r, c), texts in current_table_cells.items():
+                    if r <= max_row and c <= max_col:
+                        matrix[r][c] = "\n".join(texts).strip()
+                if any(any(cell for cell in row) for row in matrix):
+                    full_tables.append(matrix)
+            current_table_cells = {}
+            current_cell = None
+            max_row = -1
+            max_col = -1
         
         while offset + 4 <= total_len:
             header_dword = int.from_bytes(stream_data[offset:offset+4], 'little')
@@ -233,8 +253,22 @@ def parse_hwp(filepath):
             record_bytes = stream_data[offset:offset+record_len]
             offset += record_len
 
+            # HWPTAG_TABLE = 75
+            if tag_id == 75:
+                finalize_table()
+
+            # HWPTAG_CELL = 76
+            elif tag_id == 76:
+                if len(record_bytes) >= 4:
+                    col_idx = int.from_bytes(record_bytes[0:2], 'little')
+                    row_idx = int.from_bytes(record_bytes[2:4], 'little')
+                    if row_idx <= 150 and col_idx <= 50:
+                        current_cell = (row_idx, col_idx)
+                        max_row = max(max_row, row_idx)
+                        max_col = max(max_col, col_idx)
+
             # HWPTAG_PARA_TEXT = 67
-            if tag_id == 67:
+            elif tag_id == 67:
                 try:
                     # UTF-16LE text
                     # Filter control codes < 0x20 except \n, \r, \t
@@ -250,11 +284,22 @@ def parse_hwp(filepath):
                     txt = "".join(chars).strip()
                     if txt:
                         extracted_paragraphs.append(txt)
+                        if current_cell is not None:
+                            current_table_cells.setdefault(current_cell, []).append(txt)
                 except Exception:
                     pass
 
+        finalize_table()
+
     ole.close()
     
+    # 1. Try processing extracted 2D tables first
+    if full_tables:
+        table_result = process_tables(full_tables, doc_title)
+        if table_result["success"] and sum(len(v) for v in table_result["schedule"].values()) > 0:
+            return table_result
+
+    # 2. Fallback to paragraph-based parser
     return process_paragraphs(extracted_paragraphs, doc_title)
 
 def process_tables(tables, doc_title):
@@ -351,11 +396,20 @@ def parse_period_blocks(paragraphs, available_books):
     # 1. Find period block boundaries (1~6교시)
     period_indices = []
     for idx, p in enumerate(paragraphs):
-        m = re.search(r'\b([1-6])\s*교시', p.strip())
+        p_clean = p.strip()
+        m = re.search(r'(?:^|[^\d가-힣])([1-6])\s*교시', p_clean)
         if m:
             period_num = int(m.group(1))
             period_indices.append((idx, period_num))
             
+    # Fallback: check for standalone 1~6 if no "교시" keyword found
+    if not period_indices:
+        for idx, p in enumerate(paragraphs):
+            p_clean = p.strip()
+            if re.match(r'^[\[\(]?([1-6])[\]\)]?$', p_clean):
+                period_num = int(re.search(r'([1-6])', p_clean).group(1))
+                period_indices.append((idx, period_num))
+
     if not period_indices:
         return None
 
@@ -393,7 +447,7 @@ def parse_period_blocks(paragraphs, available_books):
         for p in clean_paras:
             subj = identify_subject(p)
             page_str, _, _ = extract_page_info(p)
-            if subj and len(p) <= 10 and not page_str:
+            if subj and len(p) <= 12 and not page_str:
                 subjects.append(subj)
                 subj_end += 1
             else:
@@ -472,6 +526,7 @@ def process_paragraphs(paragraphs, doc_title):
     """
     Fallback parser when HWP structure is flattened into paragraphs.
     Extracts days and periods by period-block grouping and heuristic matching.
+    Includes auto-rebalancing for single-day crowding anomaly.
     """
     available_books = get_available_books()
     
@@ -497,7 +552,7 @@ def process_paragraphs(paragraphs, doc_title):
                 break
 
         if current_day:
-            m_period = re.search(r'([1-6])\s*교시?', para)
+            m_period = re.search(r'(?:^|[^\d가-힣])([1-6])\s*교시?', para)
             if m_period:
                 current_period = int(m_period.group(1))
 
@@ -517,7 +572,26 @@ def process_paragraphs(paragraphs, doc_title):
                 })
                 current_period += 1
 
+    # 3. Anomaly Guard: Check if items got crowded into a single day (e.g. 52 items in '금')
     total_items = sum(len(v) for v in schedule.values())
+    crowded_day = None
+    for day, items in schedule.items():
+        if len(items) >= 7 and len(items) >= total_items * 0.7:
+            crowded_day = day
+            break
+
+    if crowded_day and total_items >= 5:
+        crowded_items = schedule[crowded_day]
+        new_schedule = {d: [] for d in DAY_NAMES}
+        for idx, itm in enumerate(crowded_items):
+            day_idx = idx % 5
+            calc_period = min(6, (idx // 5) + 1)
+            target_day = DAY_NAMES[day_idx]
+            itm_copy = dict(itm)
+            itm_copy["period"] = calc_period
+            new_schedule[target_day].append(itm_copy)
+        schedule = new_schedule
+
     return {
         "success": total_items > 0,
         "title": doc_title,

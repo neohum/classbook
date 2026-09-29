@@ -1,9 +1,9 @@
 {
-  "version": "1.2.8",
+  "version": "1.2.9",
   "releaseDate": "2026-09-29",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.8/classbook-setup-v1.2.8.exe",
-  "installerName": "classbook-setup-v1.2.8.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.8.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260929%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260929T002304Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a24f7a0a5ef46b34de070c8f6d4e0c7b69e373ce1347d9ff83a9d52667ca69e6",
-  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.8.exe",
-  "notes": "주학습 계획안 rhwp 기반 고화질 HTML 뷰어 연동 및 양쪽 사이드바 교과서 바꾸기 기능 추가 (v1.2.8)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.9/classbook-setup-v1.2.9.exe",
+  "installerName": "classbook-setup-v1.2.9.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.9.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260929%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260929T034053Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=125f1898d5ac2c018cc30a7da7987efcc4571b2848b3bb0b1f11c6fa13a8242d",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.9.exe",
+  "notes": "주안 재인식 기능 및 HWP 파서 요일 집중 방지 개선, 시종 알림 3초 자동 닫힘 및 교과명/쪽수 상시 유지 위젯 추가 (v1.2.9)"
 }
