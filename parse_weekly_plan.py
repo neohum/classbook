@@ -51,25 +51,43 @@ def extract_page_info(text):
     '34~37쪽', '34-37', '24쪽', '(수 12~15, 익 10~11쪽)', 'p.12~15'
     Returns: (pageStr, startPage, endPage)
     """
-    # 1. '12~15' or '12-15' with optional 쪽/p
-    m = re.search(r'(?:(?:쪽|p\.?|page)?\s*(\d{1,3})\s*(?:~|-|–)\s*(\d{1,3})\s*쪽?)', text, re.IGNORECASE)
+    # 0. Clean phone numbers, timestamps, dates, and lesson numbers
+    clean_text = re.sub(r'\d{2,4}\s*-\s*\d{3,4}\s*-\s*\d{4}', '', text)  # phone numbers like 051-260-8621
+    clean_text = re.sub(r'\(?\d{1,2}:\d{2}\s*[~∼\-]\s*\d{1,2}:\d{2}\)?', '', clean_text)  # time 09:00~09:40
+    clean_text = re.sub(r'\d{1,2}월\s*\d{1,2}일\s*[~∼\-]\s*\d{1,2}월?\s*\d{1,2}일', '', clean_text)  # date range
+    clean_text = re.sub(r'\(\s*\d+\s*/\s*\d+\s*(?:차시)?\s*\)', '', clean_text)  # (1/32) or (2/15) lesson counts
+    clean_text = re.sub(r'\b\d+/\d+차시?\b', '', clean_text)
+
+    # 1. Page with 쪽/p keyword explicitly: e.g. 12~15쪽, p.12~15
+    m = re.search(r'(?:(?:쪽|p\.?|page)\s*(\d{1,3})\s*(?:~|∼|-|–)\s*(\d{1,3})|(\d{1,3})\s*(?:~|∼|-|–)\s*(\d{1,3})\s*쪽)', clean_text, re.IGNORECASE)
     if m:
-        sp = int(m.group(1))
-        ep = int(m.group(2))
-        return (f"{sp}~{ep}쪽", sp, ep)
+        sp = int(m.group(1) or m.group(3))
+        ep = int(m.group(2) or m.group(4))
+        if 1 <= sp <= 350 and 1 <= ep <= 350 and sp <= ep:
+            return (f"{sp}~{ep}쪽", sp, ep)
 
     # 2. Single page '12쪽' or 'p.12'
-    m2 = re.search(r'(?:(\d{1,3})\s*쪽|p\.?\s*(\d{1,3}))', text, re.IGNORECASE)
+    m2 = re.search(r'(?:(\d{1,3})\s*쪽|p\.?\s*(\d{1,3}))', clean_text, re.IGNORECASE)
     if m2:
         val = int(m2.group(1) or m2.group(2))
-        return (f"{val}쪽", val, val)
+        if 1 <= val <= 350:
+            return (f"{val}쪽", val, val)
 
-    # 3. Parentheses with numbers like (34-37)
-    m3 = re.search(r'\(\s*(\d{1,3})\s*(?:~|-|–)\s*(\d{1,3})\s*\)', text)
+    # 3. Parentheses with numbers like (34-37) or (34~37)
+    m3 = re.search(r'\(\s*(\d{1,3})\s*(?:~|∼|-|–)\s*(\d{1,3})\s*\)', clean_text)
     if m3:
         sp = int(m3.group(1))
         ep = int(m3.group(2))
-        return (f"{sp}~{ep}쪽", sp, ep)
+        if 1 <= sp <= 350 and 1 <= ep <= 350 and sp <= ep:
+            return (f"{sp}~{ep}쪽", sp, ep)
+
+    # 4. Trailing or standalone '12~15'
+    m4 = re.search(r'\b(\d{1,3})\s*(?:~|∼|-|–)\s*(\d{1,3})\b', clean_text)
+    if m4:
+        sp = int(m4.group(1))
+        ep = int(m4.group(2))
+        if 1 <= sp <= 350 and 1 <= ep <= 350 and sp <= ep:
+            return (f"{sp}~{ep}쪽", sp, ep)
 
     return ("", None, None)
 

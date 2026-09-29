@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen, Minus, Calendar, Coffee, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen, Minus, Calendar, Coffee, Sparkles, BookCopy } from 'lucide-react';
 import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, WindowMinimise, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatchFolder, UpdateBookOffset, GetTextbooks } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal from '../components/WeeklyPlanScheduleModal';
 import ScheduleConfigModal from '../components/ScheduleConfigModal';
+import BookSwitcherModal from '../components/BookSwitcherModal';
 import { resolveBookForSubject } from '../utils/bookResolver';
 
 export interface ScheduleItem {
@@ -207,6 +208,20 @@ export default function ViewerPage() {
     const currentPlanRef = useRef<main.WeeklyPlanResult | null>(null);
     const [watchFolder, setWatchFolder] = useState<string>('');
     const [isWeeklyPlanModalOpen, setIsWeeklyPlanModalOpen] = useState<boolean>(false);
+
+    // Book Switcher State
+    const [isBookSwitcherOpen, setIsBookSwitcherOpen] = useState<boolean>(false);
+
+    const handleSelectBook = (newBookId: string, targetPageNum: number = 1) => {
+        if (newBookId === bookId) {
+            const physical = Math.min(Math.max(1, targetPageNum + pageOffset), numPages);
+            setCurrentPage(physical);
+            setInputPage(targetPageNum.toString());
+            showToast(`교과서 [${newBookId}] ${targetPageNum}쪽으로 이동했습니다.`);
+        } else {
+            navigate(`/viewer/${encodeURIComponent(newBookId)}?targetPage=${targetPageNum}`);
+        }
+    };
 
     // Unified Alert Data (Class Start & Rest Time)
     const [alertData, setAlertData] = useState<{
@@ -1259,6 +1274,16 @@ export default function ViewerPage() {
                         <span className="text-[8px] font-bold mt-0.5 leading-none">목록</span>
                     </button>
 
+                    {/* 교과서 바꾸기 */}
+                    <button
+                        onClick={() => setIsBookSwitcherOpen(true)}
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-800/40 hover:bg-emerald-600/80 backdrop-blur-md text-emerald-300 hover:text-white rounded-xl flex flex-col items-center justify-center transition-all shadow-sm border border-white/10 hover:border-emerald-400/50 group cursor-pointer active:scale-95"
+                        title="교과서 바꾸기"
+                    >
+                        <BookCopy className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[8px] font-bold mt-0.5 leading-none">교과서</span>
+                    </button>
+
                     {/* 계획안 */}
                     <button
                         onClick={() => setIsWeeklyPlanModalOpen(true)}
@@ -1394,6 +1419,16 @@ export default function ViewerPage() {
                     >
                         <Home className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
                         <span className="text-[8px] font-bold mt-0.5 leading-none">목록</span>
+                    </button>
+
+                    {/* 교과서 바꾸기 */}
+                    <button
+                        onClick={() => setIsBookSwitcherOpen(true)}
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-800/40 hover:bg-emerald-600/80 backdrop-blur-md text-emerald-300 hover:text-white rounded-xl flex flex-col items-center justify-center transition-all shadow-sm border border-white/10 hover:border-emerald-400/50 group cursor-pointer active:scale-95"
+                        title="교과서 바꾸기"
+                    >
+                        <BookCopy className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                        <span className="text-[8px] font-bold mt-0.5 leading-none">교과서</span>
                     </button>
 
                     {/* 계획안 */}
@@ -1616,6 +1651,14 @@ export default function ViewerPage() {
                     </div>
                 </div>
             )}
+
+            {/* Quick Book Switcher Modal */}
+            <BookSwitcherModal
+                isOpen={isBookSwitcherOpen}
+                currentBookId={bookId || ''}
+                onClose={() => setIsBookSwitcherOpen(false)}
+                onSelectBook={handleSelectBook}
+            />
 
             {/* Weekly Plan Schedule Modal */}
             <WeeklyPlanScheduleModal

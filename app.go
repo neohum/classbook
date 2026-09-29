@@ -24,7 +24,7 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.7"
+const AppVersion = "1.2.8"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -638,6 +638,59 @@ func (a *App) GetLatestWeeklyPlan() (*WeeklyPlanResult, error) {
 	return a.loadLatestPlan()
 }
 
+// GetWeeklyPlanRawBase64 reads the latest weekly plan file and returns its base64 content
+func (a *App) GetWeeklyPlanRawBase64(customPath string) (string, error) {
+	targetPath := customPath
+	if targetPath == "" && a.currentPlan != nil {
+		targetPath = a.currentPlan.FilePath
+	}
+	if targetPath == "" {
+		targetPath = a.settings.LastPlanFile
+	}
+	if targetPath == "" {
+		// Fallback to watch folder latest file
+		watchFolder := a.settings.PlanWatchFolder
+		if watchFolder != "" {
+			entries, err := os.ReadDir(watchFolder)
+			if err == nil {
+				var latestFile string
+				var latestMod time.Time
+				for _, e := range entries {
+					if !e.IsDir() {
+						ext := strings.ToLower(filepath.Ext(e.Name()))
+						if ext == ".hwp" || ext == ".hwpx" {
+							if info, err := e.Info(); err == nil {
+								if info.ModTime().After(latestMod) {
+									latestMod = info.ModTime()
+									latestFile = filepath.Join(watchFolder, e.Name())
+								}
+							}
+						}
+					}
+				}
+				if latestFile != "" {
+					targetPath = latestFile
+				}
+			}
+		}
+	}
+
+	if targetPath == "" {
+		return "", fmt.Errorf("주학습계획안 파일이 지정되지 않았습니다")
+	}
+
+	if _, err := os.Stat(targetPath); err != nil {
+		return "", fmt.Errorf("파일을 찾을 수 없습니다: %s", targetPath)
+	}
+
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		return "", fmt.Errorf("파일 읽기 실패: %v", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
 func (a *App) saveCurrentPlan() {
 	if a.currentPlan == nil {
 		return
@@ -666,6 +719,9 @@ func (a *App) loadLatestPlan() (*WeeklyPlanResult, error) {
 	var plan WeeklyPlanResult
 	if err := json.Unmarshal(data, &plan); err != nil {
 		return nil, err
+	}
+	if plan.FilePath == "" && a.settings.LastPlanFile != "" {
+		plan.FilePath = a.settings.LastPlanFile
 	}
 	a.currentPlan = &plan
 	return &plan, nil

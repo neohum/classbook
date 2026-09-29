@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "주안 분석 시 요일별(월~금) 교시 정상 배분 수정 및 시종시간 항목 사이 삽입 드래그 앤 드롭 지원 (v1.2.7)"
+    notes = "주학습 계획안 rhwp 기반 고화질 HTML 뷰어 연동 및 양쪽 사이드바 교과서 바꾸기 기능 추가 (v1.2.8)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()
@@ -103,7 +103,7 @@ def main():
     # 4. Generate version.json
     version_info = {
         "version": version,
-        "releaseDate": "2026-09-28",
+        "releaseDate": "2026-09-29",
         "downloadUrl": github_download_url,
         "installerName": installer_name,
         "wasabiPresignedUrl": presigned_url,

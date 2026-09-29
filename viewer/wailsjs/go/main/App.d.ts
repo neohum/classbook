@@ -22,6 +22,8 @@ export function GetTextbooks():Promise<Array<main.Textbook>>;
 
 export function GetWatchFolder():Promise<string>;
 
+export function GetWeeklyPlanRawBase64(arg1:string):Promise<string>;
+
 export function Greet(arg1:string):Promise<string>;
 
 export function ParseWeeklyPlanFile(arg1:string):Promise<main.WeeklyPlanResult>;

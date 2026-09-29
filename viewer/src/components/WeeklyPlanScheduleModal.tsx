@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, Calendar, FolderOpen, Upload, BookOpen, Clock, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { X, Calendar, FolderOpen, Upload, BookOpen, Clock, ArrowRight, CheckCircle2, FileText, Sparkles } from 'lucide-react';
 import { main } from '../../wailsjs/go/models';
 import { SelectWatchFolderDialog, SelectWeeklyPlanFileDialog } from '../../wailsjs/go/main/App';
+import HwpHtmlViewerModal from './HwpHtmlViewerModal';
 
 interface Props {
     isOpen: boolean;
@@ -28,6 +29,7 @@ export default function WeeklyPlanScheduleModal({
     const initialDay = (todayIndex >= 1 && todayIndex <= 5) ? DAY_LABELS[todayIndex - 1] : '월';
     const [selectedDay, setSelectedDay] = useState<string>(initialDay);
     const [isLoading, setIsLoading] = useState(false);
+    const [isHwpHtmlViewerOpen, setIsHwpHtmlViewerOpen] = useState(false);
 
     if (!isOpen) return null;
 
@@ -48,9 +50,9 @@ export default function WeeklyPlanScheduleModal({
             const res = await SelectWeeklyPlanFileDialog();
             if (res && res.success) {
                 onPlanUpdated(res);
-                alert(`주학습계획안이 성공적으로 분석되었습니다!\n(${res.title})`);
+                alert(`주학습계획안이 성공적으로 분석되었습니다!\n(${res.title})\n\n[HTML 원본 보기] 버튼을 누르면 원본 양식 그대로 열람하실 수도 있습니다.`);
             } else if (res && !res.success) {
-                alert(`주학습계획안 분석에 실패했습니다: ${res.error || '내용을 찾을 수 없음'}`);
+                alert(`주학습계획안 데이터 분석에 일부 어려움이 있었으나, [HTML 원본 보기] 버튼으로 원본 HWP 문서를 그대로 확인하실 수 있습니다.`);
             }
         } catch (err: any) {
             alert(`파일 분석 오류: ${err.message || err}`);
@@ -62,58 +64,71 @@ export default function WeeklyPlanScheduleModal({
     const currentDayItems = plan?.schedule ? plan.schedule[selectedDay] || [] : [];
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
-                {/* Header */}
-                <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-violet-600 text-white rounded-2xl shadow-md shadow-violet-500/20">
-                            <Calendar className="w-6 h-6" />
+        <>
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+                <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+                    {/* Header */}
+                    <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-violet-600 text-white rounded-2xl shadow-md shadow-violet-500/20">
+                                <Calendar className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-extrabold text-slate-800">
+                                    {plan?.title || "주학습 계획안"}
+                                </h2>
+                                <p className="text-xs text-slate-400">
+                                    교시별 교과명과 쪽수를 확인하고 바로 이동할 수 있습니다.
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h2 className="text-xl font-extrabold text-slate-800">
-                                {plan?.title || "주학습 계획안"}
-                            </h2>
-                            <p className="text-xs text-slate-400">
-                                교시별 교과명과 쪽수를 확인하고 바로 이동할 수 있습니다.
-                            </p>
+
+                        <div className="flex items-center gap-2">
+                            {/* HTML 뷰어 열기 버튼 */}
+                            <button
+                                onClick={() => setIsHwpHtmlViewerOpen(true)}
+                                className="px-3 py-1.5 bg-violet-100 hover:bg-violet-200 text-violet-800 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors border border-violet-200 cursor-pointer shadow-xs"
+                                title="rhwp를 이용해 HWP 원본 서식 그대로 HTML로 보기"
+                            >
+                                <FileText className="w-4 h-4 text-violet-600" />
+                                <span>HTML 원본 보기</span>
+                            </button>
+
+                            <button
+                                onClick={onClose}
+                                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+                                title="닫기"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
                         </div>
                     </div>
 
-                    <button
-                        onClick={onClose}
-                        className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
-                        title="닫기"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
+                    {/* Watch Folder & Upload Bar */}
+                    <div className="bg-slate-100/80 px-6 py-3 border-b border-slate-200/60 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2 text-slate-600 truncate max-w-xs sm:max-w-sm">
+                            <span className="font-semibold text-slate-700 shrink-0">감시 폴더:</span>
+                            <span className="truncate bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-800 font-mono text-[11px]" title={watchFolder}>
+                                {watchFolder || "지정되지 않음"}
+                            </span>
+                            <button
+                                onClick={handleSelectFolder}
+                                className="shrink-0 px-2 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                                <FolderOpen className="w-3.5 h-3.5" />
+                                <span>폴더 변경</span>
+                            </button>
+                        </div>
 
-                {/* Watch Folder & Upload Bar */}
-                <div className="bg-slate-100/80 px-6 py-3 border-b border-slate-200/60 flex flex-wrap items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-2 text-slate-600 truncate max-w-xs sm:max-w-sm">
-                        <span className="font-semibold text-slate-700 shrink-0">감시 폴더:</span>
-                        <span className="truncate bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-800 font-mono text-[11px]" title={watchFolder}>
-                            {watchFolder || "지정되지 않음"}
-                        </span>
                         <button
-                            onClick={handleSelectFolder}
-                            className="shrink-0 px-2 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                            onClick={handleSelectFile}
+                            disabled={isLoading}
+                            className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-semibold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
-                            <FolderOpen className="w-3.5 h-3.5" />
-                            <span>폴더 변경</span>
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>{isLoading ? "분석 중..." : "HWP / HWPX 파일 올리기"}</span>
                         </button>
                     </div>
-
-                    <button
-                        onClick={handleSelectFile}
-                        disabled={isLoading}
-                        className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-semibold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    >
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>{isLoading ? "분석 중..." : "HWP / HWPX 파일 올리기"}</span>
-                    </button>
-                </div>
 
                 {/* Day Tabs */}
                 <div className="px-6 pt-4 pb-2 border-b border-slate-100 flex gap-2">
@@ -227,5 +242,14 @@ export default function WeeklyPlanScheduleModal({
                 </div>
             </div>
         </div>
+
+        {/* rhwp 기반 HWP 원본 HTML 뷰어 모달 */}
+        <HwpHtmlViewerModal
+                isOpen={isHwpHtmlViewerOpen}
+                onClose={() => setIsHwpHtmlViewerOpen(false)}
+                filePath={plan?.filePath}
+                docTitle={plan?.title}
+            />
+        </>
     );
 }
