@@ -114,7 +114,7 @@ export default function MainPage() {
         setTimeout(() => setToastMessage(''), 4000);
     };
 
-    // Helper: Apply weekly plan to navigate to current period's book and page
+    // Helper: Apply weekly plan to navigate to current period's book and page or show alert
     const applyWeeklyPlan = async (plan: main.WeeklyPlanResult) => {
         if (!plan || !plan.success || !plan.schedule) return;
 
@@ -122,26 +122,31 @@ export default function MainPage() {
         const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
         const targetDay = (dayOfWeek === '일' || dayOfWeek === '토') ? '월' : dayOfWeek;
         const dayItems = plan.schedule[targetDay] || [];
-        if (dayItems.length === 0) return;
 
         const hh = now.getHours().toString().padStart(2, '0');
         const mm = now.getMinutes().toString().padStart(2, '0');
         const currentTimeStr = `${hh}:${mm}`;
 
         const currentSchedules = getStoredSchedule();
+        if (currentSchedules.length === 0) return;
 
         let activePeriod = 1;
+        let activeSched = currentSchedules[0];
+
         for (let i = 0; i < currentSchedules.length; i++) {
             const s = currentSchedules[i];
             const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
             if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                 activePeriod = pNum;
+                activeSched = s;
                 break;
             } else if (currentTimeStr < s.startTime) {
                 activePeriod = pNum;
+                activeSched = s;
                 break;
             } else if (currentTimeStr > s.endTime) {
                 activePeriod = pNum;
+                activeSched = s;
             }
         }
 
@@ -149,6 +154,9 @@ export default function MainPage() {
         if (!targetItem && dayItems.length > 0) {
             targetItem = dayItems[activePeriod - 1] || dayItems[0];
         }
+
+        const periodName = activeSched?.name || `${activePeriod}교시`;
+        const periodTime = activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : "";
 
         if (targetItem) {
             const targetPage = targetItem.startPage || 1;
@@ -160,13 +168,28 @@ export default function MainPage() {
 
             const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, currentBooks);
             if (resolved) {
-                showToast(`주학습계획안 반영: ${targetDay}요일 ${targetItem.period || activePeriod}교시 [${resolved.title} ${targetPage}쪽]으로 이동합니다.`);
+                showToast(`주학습계획안 반영: ${targetDay}요일 ${periodName} [${resolved.title} ${targetPage}쪽]으로 이동합니다.`);
                 setTimeout(() => {
                     navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}&startAlert=true`);
                 }, 600);
             } else {
-                showToast(`주학습계획안: ${targetDay}요일 ${targetItem.period || activePeriod}교시 [${targetItem.subject} ${targetPage}쪽] 일치하는 교재를 찾지 못했습니다.`);
+                // 자율활동 또는 교과서가 없는 경우: 교과서 이동 없이 알림 모달만 바로 표시!
+                setAlertPeriod(activePeriod);
+                setAlertPeriodTime(periodTime);
+                setAlertItem(targetItem);
+                setAlertIsRestTime(false);
+                setAlertCustomMessage(activeSched?.startMessage || `${periodName} [${targetItem.subject}] 수업 시간입니다.`);
+                setIsAlertModalOpen(true);
+                showToast(`${periodName} [${targetItem.subject}] 교과서가 없는 수업(자율활동 등)입니다. 알림을 표시합니다.`);
             }
+        } else {
+            // 주안에 해당 교시가 없더라도 시종 시간표에 따라 알림 모달 표시
+            setAlertPeriod(activePeriod);
+            setAlertPeriodTime(periodTime);
+            setAlertItem(null);
+            setAlertIsRestTime(false);
+            setAlertCustomMessage(activeSched?.startMessage || `${periodName} 수업 시간입니다.`);
+            setIsAlertModalOpen(true);
         }
     };
 
@@ -254,15 +277,16 @@ export default function MainPage() {
                         foundItem = dayItems[schedPeriod - 1] || dayItems[0];
                     }
 
-                    if (foundItem) {
-                        setAlertPeriod(schedPeriod);
-                        setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
-                        setAlertItem(foundItem);
-                        setAlertIsRestTime(false);
-                        setAlertCustomMessage(sched.startMessage || `${schedPeriod}교시 수업을 시작합니다! 자리에 앉아주세요.`);
-                        setIsAlertModalOpen(true);
+                    const periodTitle = sched.name || `${schedPeriod}교시`;
+                    setAlertPeriod(schedPeriod);
+                    setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
+                    setAlertItem(foundItem || null);
+                    setAlertIsRestTime(false);
+                    setAlertCustomMessage(sched.startMessage || `${periodTitle} 수업을 시작합니다! 자리에 앉아주세요.`);
+                    setIsAlertModalOpen(true);
 
-                        // 수업 시작 시: 과목 페이지가 자동으로 뜨도록 뷰어로 즉시 이동!
+                    // 교과서가 있는 경우에만 뷰어로 자동 이동
+                    if (foundItem) {
                         const targetPage = foundItem.startPage || 1;
                         let currentBooks = textbooks;
                         if (!currentBooks || currentBooks.length === 0) {
@@ -273,6 +297,8 @@ export default function MainPage() {
                             setTimeout(() => {
                                 navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}&startAlert=true`);
                             }, 500);
+                        } else {
+                            showToast(`${periodTitle} [${foundItem.subject}] 교과서가 없는 수업(자율활동 등)입니다. 알림을 표시합니다.`);
                         }
                     }
                     break;
@@ -481,7 +507,7 @@ export default function MainPage() {
         navigate(`/viewer/${encodeURIComponent(targetId)}?targetPage=${pageNumber}`);
     };
 
-    // Manual test trigger for class alert
+    // Manual trigger for current time class alert (or test preview)
     const handleTriggerTestAlert = () => {
         if (!currentPlan || !currentPlan.schedule) {
             alert("먼저 주학습계획안 파일(HWP/HWPX)을 등록해주세요!");
@@ -498,10 +524,45 @@ export default function MainPage() {
             return;
         }
 
-        const firstItem = items[0];
-        setAlertPeriod(firstItem.period);
-        setAlertPeriodTime("09:00 ~ 09:40");
-        setAlertItem(firstItem);
+        const hh = now.getHours().toString().padStart(2, '0');
+        const mm = now.getMinutes().toString().padStart(2, '0');
+        const currentTimeStr = `${hh}:${mm}`;
+
+        const currentSchedules = getStoredSchedule();
+
+        let activePeriod = 1;
+        let activeSched = currentSchedules[0];
+
+        for (let i = 0; i < currentSchedules.length; i++) {
+            const s = currentSchedules[i];
+            const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+            if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
+                activePeriod = pNum;
+                activeSched = s;
+                break;
+            } else if (currentTimeStr < s.startTime) {
+                activePeriod = pNum;
+                activeSched = s;
+                break;
+            } else if (currentTimeStr > s.endTime) {
+                activePeriod = pNum;
+                activeSched = s;
+            }
+        }
+
+        let currentItem = items.find(it => it.period === activePeriod);
+        if (!currentItem && items.length > 0) {
+            currentItem = items[activePeriod - 1] || items[0];
+        }
+
+        const periodName = activeSched?.name || `${activePeriod}교시`;
+        const periodTime = activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : "";
+
+        setAlertPeriod(activePeriod);
+        setAlertPeriodTime(periodTime);
+        setAlertItem(currentItem || null);
+        setAlertIsRestTime(false);
+        setAlertCustomMessage(activeSched?.startMessage || `${periodName} [${currentItem?.subject || '수업'}] 시작 시간입니다!`);
         setIsAlertModalOpen(true);
     };
 
@@ -766,19 +827,25 @@ export default function MainPage() {
                         onClick={() => {
                             if (activeLesson.matchedBookId) {
                                 handleGoToBook(activeLesson.matchedBookId, activeLesson.startPage || 1);
+                            } else {
+                                showToast(`[${activeLesson.subject}] 교과서가 없는 활동 수업입니다.`);
                             }
                         }}
                         className="flex items-center gap-2.5 cursor-pointer group"
-                        title="클릭하면 해당 교과서로 이동합니다"
+                        title={activeLesson.matchedBookId ? "클릭하면 해당 교과서로 이동합니다" : "교과서가 없는 활동 수업입니다"}
                     >
                         <div className="flex items-center gap-1.5 font-black text-base text-white group-hover:text-violet-300 transition-colors">
                             <BookOpen className="w-4 h-4 text-violet-400" />
                             <span>{activeLesson.subject}</span>
                         </div>
 
-                        {activeLesson.pageStr && (
+                        {activeLesson.pageStr ? (
                             <div className="px-2.5 py-0.5 bg-amber-500/20 border border-amber-400/50 text-amber-300 font-black rounded-lg text-sm group-hover:scale-105 transition-transform shadow-xs">
                                 {activeLesson.pageStr}
+                            </div>
+                        ) : (
+                            <div className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-bold rounded-lg text-xs">
+                                자율·활동
                             </div>
                         )}
 

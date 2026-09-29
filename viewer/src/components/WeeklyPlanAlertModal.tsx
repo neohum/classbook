@@ -136,20 +136,37 @@ export default function WeeklyPlanAlertModal({
                     </div>
                 )}
 
-                {/* Textbook and Page Number Card (Only for Class Start if info available) */}
+                {/* Textbook and Page Number Card (Only for Class Start) */}
                 {!isRestTime && item && (
                     <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 mb-6 shadow-inner text-center">
-                        <div className="text-xs uppercase tracking-wider text-slate-400 mb-1 font-semibold">
-                            학습 교재 및 쪽수
-                        </div>
-                        <div className="text-3xl font-black text-violet-400">
-                            {item.pageStr || `${targetPage}쪽`}
-                        </div>
-                        {item.matchedBookId && (
-                            <div className="text-xs text-slate-300 mt-1.5 flex items-center justify-center gap-1">
-                                <BookOpen className="w-3.5 h-3.5 text-violet-400" />
-                                <span>연결된 교재: <strong>{item.matchedBookId}</strong></span>
-                            </div>
+                        {item.pageStr || (item.startPage && item.startPage > 0) ? (
+                            <>
+                                <div className="text-xs uppercase tracking-wider text-slate-400 mb-1 font-semibold">
+                                    학습 교재 및 쪽수
+                                </div>
+                                <div className="text-3xl font-black text-violet-400">
+                                    {item.pageStr || `${targetPage}쪽`}
+                                </div>
+                                {item.matchedBookId && (
+                                    <div className="text-xs text-slate-300 mt-1.5 flex items-center justify-center gap-1">
+                                        <BookOpen className="w-3.5 h-3.5 text-violet-400" />
+                                        <span>연결된 교재: <strong>{item.matchedBookId}</strong></span>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                <div className="text-xs uppercase tracking-wider text-amber-400/90 mb-1 font-semibold">
+                                    수업 안내
+                                </div>
+                                <div className="text-2xl font-black text-amber-300">
+                                    교과서 없는 활동 수업
+                                </div>
+                                <div className="text-xs text-slate-300 mt-1.5 flex items-center justify-center gap-1">
+                                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>{item.topic || `${item.subject} (자율·체험·창체 활동)`}</span>
+                                </div>
+                            </>
                         )}
                     </div>
                 )}
@@ -160,7 +177,7 @@ export default function WeeklyPlanAlertModal({
                         onClick={handleConfirmAndGo}
                         className={`w-full py-4 px-6 bg-gradient-to-r ${isRestTime ? 'from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-amber-600/40' : 'from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-violet-600/40'} text-white font-bold text-lg rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 group cursor-pointer active:scale-95`}
                     >
-                        <span>{isRestTime ? "확인 및 알림 끄기" : hasBookTarget ? "종료 (해당 교과서 보기)" : "종료"}</span>
+                        <span>{isRestTime ? "확인 및 알림 끄기" : hasBookTarget ? "종료 (해당 교과서 보기)" : "확인 및 닫기"}</span>
                         {!isRestTime && hasBookTarget && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
                     </button>
 

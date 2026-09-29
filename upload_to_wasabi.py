@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "주안 재인식 기능 및 HWP 파서 요일 집중 방지 개선, 시종 알림 3초 자동 닫힘 및 교과명/쪽수 상시 유지 위젯 추가 (v1.2.9)"
+    notes = "자율활동 및 교과서 없는 수업 알림 지원, 현재 시각 기준 수업 알림 정확도 개선 (v1.2.10)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

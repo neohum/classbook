@@ -330,16 +330,14 @@ export default function ViewerPage() {
                         targetItem = dayItems[activePeriod - 1] || dayItems[0];
                     }
 
-                    if (targetItem) {
-                        setAlertData({
-                            isOpen: true,
-                            isRestTime: false,
-                            periodName: activeSched?.name || `${activePeriod}교시`,
-                            periodTime: activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '',
-                            customMessage: activeSched?.startMessage || `${activePeriod}교시 수업을 시작합니다! 자리에 앉아주세요.`,
-                            item: targetItem
-                        });
-                    }
+                    setAlertData({
+                        isOpen: true,
+                        isRestTime: false,
+                        periodName: activeSched?.name || `${activePeriod}교시`,
+                        periodTime: activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '',
+                        customMessage: activeSched?.startMessage || `${activeSched?.name || `${activePeriod}교시`} 수업을 시작합니다! 자리에 앉아주세요.`,
+                        item: targetItem || null
+                    });
                 }
             }
         }).catch(console.error);
@@ -1741,23 +1739,29 @@ export default function ViewerPage() {
                     {/* 교과명 & 쪽수 */}
                     <div 
                         onClick={() => {
-                            if (activeLesson.startPage) {
+                            if (activeLesson.startPage && activeLesson.startPage > 0) {
                                 const physical = Math.min(Math.max(1, activeLesson.startPage + pageOffset), numPages);
                                 setCurrentPage(physical);
                                 setInputPage(activeLesson.startPage.toString());
+                            } else {
+                                showToast(`[${activeLesson.subject}] 교과서가 없는 활동 수업입니다.`);
                             }
                         }}
                         className="flex items-center gap-2.5 cursor-pointer group"
-                        title="클릭하면 해당 쪽수로 이동합니다"
+                        title={activeLesson.pageStr ? "클릭하면 해당 쪽수로 이동합니다" : "교과서가 없는 활동 수업입니다"}
                     >
                         <div className="flex items-center gap-1.5 font-black text-base text-white group-hover:text-violet-300 transition-colors">
                             <BookOpen className="w-4 h-4 text-violet-400" />
                             <span>{activeLesson.subject}</span>
                         </div>
 
-                        {activeLesson.pageStr && (
+                        {activeLesson.pageStr ? (
                             <div className="px-2.5 py-0.5 bg-amber-500/20 border border-amber-400/50 text-amber-300 font-black rounded-lg text-sm group-hover:scale-105 transition-transform shadow-xs">
                                 {activeLesson.pageStr}
+                            </div>
+                        ) : (
+                            <div className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-bold rounded-lg text-xs">
+                                자율·활동
                             </div>
                         )}
 
