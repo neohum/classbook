@@ -16,12 +16,13 @@ except ImportError:
 
 # Known subjects keywords and mapping to default textbook names
 SUBJECT_MAP = {
-    '국어': ['국어', '국어1-1가', '국어1-1나', '국어2-1', '국어3-1', '국어4-1', '국어5-1', '국어6-1'],
-    '국어활동': ['국어활동', '국어활동1-1', '국어활동2-1'],
-    '국활': ['국어활동', '국어활동1-1', '국어활동2-1'],
-    '수학': ['수학', '수학1-1', '수학2-1', '수학3-1', '수학4-1', '수학5-1', '수학6-1'],
-    '수학익힘': ['수학익힘', '수학익힘1-1', '수학익힘2-1'],
-    '수익': ['수학익힘', '수학익힘1-1', '수학익힘2-1'],
+    '국어': ['국어', '국어1-1가', '국어1-1나', '국어1-2가', '국어1-2나', '국어2-1', '국어2-2', '국어3-1', '국어4-1', '국어5-1', '국어6-1'],
+    '국어활동': ['국어활동', '국어활동1-1', '국어활동1-2', '국어활동2-1'],
+    '국활': ['국어활동', '국어활동1-1', '국어활동1-2', '국어활동2-1'],
+    '수학': ['수학', '수학1-1', '수학1-2', '수학2-1', '수학2-2', '수학3-1', '수학4-1', '수학5-1', '수학6-1'],
+    '수학익힘': ['수학익힘', '수학익힘1-1', '수학익힘1-2', '수학익힘2-1'],
+    '수익': ['수학익힘', '수학익힘1-1', '수학익힘1-2', '수학익힘2-1'],
+    '하루': ['하루', '하루1-1', '하루1-2'],
     '학교': ['학교', '학교1-1'],
     '사람들': ['사람들', '사람들1-1'],
     '탐험': ['탐험', '탐험1-1'],
@@ -29,12 +30,12 @@ SUBJECT_MAP = {
     '여름': ['여름', '여름1-1', '사람들1-1'],
     '가을': ['가을', '가을1-1', '탐험1-1'],
     '겨울': ['겨울', '겨울1-1'],
-    '바른생활': ['바른생활', '학교1-1'],
-    '슬기로운생활': ['슬기로운생활', '사람들1-1'],
-    '즐거운생활': ['즐거운생활', '탐험1-1'],
-    '바생': ['바른생활', '학교1-1'],
-    '슬생': ['슬기로운생활', '사람들1-1'],
-    '즐생': ['즐거운생활', '탐험1-1'],
+    '바른생활': ['하루', '하루1-1', '하루1-2', '학교', '학교1-1', '바른생활'],
+    '슬기로운생활': ['하루', '하루1-1', '하루1-2', '사람들', '사람들1-1', '슬기로운생활'],
+    '즐거운생활': ['하루', '하루1-1', '하루1-2', '탐험', '탐험1-1', '즐거운생활'],
+    '바생': ['하루', '하루1-1', '하루1-2', '학교', '학교1-1', '바른생활'],
+    '슬생': ['하루', '하루1-1', '하루1-2', '사람들', '사람들1-1', '슬기로운생활'],
+    '즐생': ['하루', '하루1-1', '하루1-2', '탐험', '탐험1-1', '즐거운생활'],
     '도덕': ['도덕'],
     '사회': ['사회'],
     '과학': ['과학'],
@@ -52,9 +53,12 @@ DAY_NAMES = ['월', '화', '수', '목', '금']
 def extract_page_info(text):
     """
     Extract page ranges from text like:
-    '34~37쪽', '34-37', '24쪽', '(수 12~15, 익 10~11쪽)', 'p.12~15'
+    '34~37쪽', '34-37', '24쪽', '(수 12~15, 익 10~11쪽)', 'p.12~15', '42'
     Returns: (pageStr, startPage, endPage)
     """
+    if not text:
+        return ("", None, None)
+
     # 0. Clean phone numbers, timestamps, dates, and lesson numbers
     clean_text = re.sub(r'\d{2,4}\s*-\s*\d{3,4}\s*-\s*\d{4}', '', text)  # phone numbers like 051-260-8621
     clean_text = re.sub(r'\(?\d{1,2}:\d{2}\s*[~∼\-]\s*\d{1,2}:\d{2}\)?', '', clean_text)  # time 09:00~09:40
@@ -93,11 +97,17 @@ def extract_page_info(text):
         if 1 <= sp <= 350 and 1 <= ep <= 350 and sp <= ep:
             return (f"{sp}~{ep}쪽", sp, ep)
 
+    # 5. Standalone single number: e.g. '15' or '42'
+    m5 = re.match(r'^\s*(\d{1,3})\s*$', clean_text)
+    if m5:
+        val = int(m5.group(1))
+        if 1 <= val <= 350:
+            return (f"{val}쪽", val, val)
+
     return ("", None, None)
 
 def identify_subject(text):
     """Detect subject from cell text"""
-    # Sort subjects by length descending to match '국어활동' before '국어', '수학익힘' before '수학'
     sorted_subjects = sorted(SUBJECT_MAP.items(), key=lambda x: max(len(x[0]), max((len(a) for a in x[1]), default=0)), reverse=True)
     
     clean = re.sub(r'[\s\(\)\[\]0-9~.\-–쪽]', '', text)
@@ -108,31 +118,73 @@ def identify_subject(text):
             if al in clean:
                 return sub
                 
-    for sub in sorted(['국어활동', '수학익힘', '바른생활', '슬기로운생활', '즐거운생활', '국어', '수학', '바생', '슬생', '즐생', '봄', '여름', '가을', '겨울', '도덕', '사회', '과학', '체육', '음악', '미술', '영어', '안전', '창체', '학교', '사람들', '탐험'], key=len, reverse=True):
+    for sub in sorted(['국어활동', '수학익힘', '바른생활', '슬기로운생활', '즐거운생활', '국어', '수학', '바생', '슬생', '즐생', '하루', '학교', '사람들', '탐험', '봄', '여름', '가을', '겨울', '도덕', '사회', '과학', '체육', '음악', '미술', '영어', '안전', '창체'], key=len, reverse=True):
         if sub in text:
             return sub
     return ""
 
-def match_book_id(subject, available_books):
+def match_book_id(subject, available_books, unit=""):
     """
-    Given a parsed subject and a list of available book IDs,
+    Given a parsed subject, available book IDs, and optional unit text,
     find the best matching book ID.
+    In Korean elementary schools, integrated subjects (바른생활, 슬기로운생활, 즐거운생활)
+    correspond to thematic textbooks named after the unit (e.g. '하루', '학교', '사람들', '탐험').
     """
-    if not subject:
+    if not subject and not unit:
         return ""
-    # Exact match or starts with
+
+    is_integrated = any(k in (subject or "") for k in ['바른생활', '슬기로운생활', '즐거운생활', '바생', '슬생', '즐생', '통합'])
+
+    # 1. If unit is provided, check if unit contains a theme/book title
+    if unit:
+        clean_u = re.sub(r'^\d+\s*[\.\)]\s*', '', unit)
+        clean_u = re.sub(r'\(\s*\d+\s*/\s*\d+\s*(?:차시)?\s*\)', '', clean_u).strip()
+        
+        # Check if clean_u or any keyword in unit matches available_books
+        for b in available_books:
+            bid = b.get('id', '')
+            btitle = b.get('title', '')
+            for target in [bid, btitle]:
+                target_clean = re.sub(r'\d+-\d+.*$', '', target)
+                if (target_clean and target_clean in unit) or (target and target in unit):
+                    return bid
+
+        if is_integrated:
+            # Check for known integrated curriculum themes: '하루', '학교', '사람들', '탐험', '봄', '여름', '가을', '겨울', '세상'
+            for theme in ['하루', '학교', '사람들', '탐험', '봄', '여름', '가을', '겨울', '세상']:
+                if theme in unit:
+                    for b in available_books:
+                        bid = b.get('id', '')
+                        if theme in bid:
+                            return bid
+                    return theme
+
+    # 2. If subject is integrated, default to '하루' if mentioned or as primary fallback
+    if is_integrated:
+        if ('하루' in (unit or "")) or ('하루' in (subject or "")) or not unit:
+            for b in available_books:
+                bid = b.get('id', '')
+                if '하루' in bid:
+                    return bid
+            return '하루'
+
+    # 3. Exact match or starts with in available_books
     for b in available_books:
         bid = b.get('id', '')
         if subject == bid or bid.startswith(subject):
             return bid
     
-    # Check aliases
+    # 4. Check aliases in SUBJECT_MAP
     aliases = SUBJECT_MAP.get(subject, [])
     for al in aliases:
         for b in available_books:
             bid = b.get('id', '')
             if al == bid or bid.startswith(al):
                 return bid
+
+    # 5. Final fallback for integrated
+    if is_integrated:
+        return '하루'
                 
     return ""
 
@@ -309,10 +361,12 @@ def parse_hwp(filepath):
 def process_tables(tables, doc_title):
     """
     Search tables to locate the weekly schedule table.
-    Typically rows correspond to periods (1~6), columns correspond to days (월~금).
+    Supports both 1-row-per-period and 4-row-per-period (교과, 단원, 학습주제, 쪽수/준비물) layouts.
+    In 4-row layouts, the 4th row has split cells where the FRONT cell is the textbook page.
     """
     best_schedule = {day: [] for day in DAY_NAMES}
     found = False
+    available_books = get_available_books()
 
     for table in tables:
         # Check if table contains days (월, 화, 수, 목, 금)
@@ -333,60 +387,136 @@ def process_tables(tables, doc_title):
         if header_row_idx >= 0 and len(day_col_map) >= 3:
             found = True
             current_period = 1
-            for r_idx in range(header_row_idx + 1, len(table)):
+            r_idx = header_row_idx + 1
+
+            while r_idx < len(table):
                 row = table[r_idx]
                 if not row:
+                    r_idx += 1
                     continue
 
                 # Check period number in row
                 row_header_str = " ".join(row[:2])
-                m_period = re.search(r'([1-6])\s*교시?', row_header_str)
+                m_period = re.search(r'([1-8])\s*교시?', row_header_str)
                 if m_period:
                     current_period = int(m_period.group(1))
 
-                for c_idx, cell_text in enumerate(row):
-                    day = day_col_map.get(c_idx)
-                    if not day or not cell_text.strip():
-                        continue
+                # Check if this table uses 4 rows per period
+                # (Row 0: Subject, Row 1: Unit, Row 2: Topic, Row 3: Page/Materials)
+                is_4row = False
+                if r_idx + 3 < len(table):
+                    h1 = " ".join(table[r_idx+1][:2])
+                    h2 = " ".join(table[r_idx+2][:2])
+                    h3 = " ".join(table[r_idx+3][:2])
+                    if not re.search(r'([1-8])\s*교시', h1) and \
+                       not re.search(r'([1-8])\s*교시', h2) and \
+                       not re.search(r'([1-8])\s*교시', h3):
+                        is_4row = True
 
-                    subject = identify_subject(cell_text)
-                    page_str, sp, ep = extract_page_info(cell_text)
-                    
-                    # Clean lines for topic
-                    lines = [ln.strip() for ln in cell_text.split('\n') if ln.strip()]
-                    topic = ""
-                    for ln in lines:
-                        # strip subject and page from line
-                        cleaned_line = ln
-                        if subject:
-                            cleaned_line = re.sub(rf'^{re.escape(subject)}[:\s]*', '', cleaned_line)
-                        if page_str:
-                            cleaned_line = cleaned_line.replace(page_str, '').replace(f"({page_str})", '')
-                        cleaned_line = re.sub(r'[\(\[\{]\s*\d+.*?\d*\s*쪽?\s*[\)\]\}]', '', cleaned_line)
-                        cleaned_line = re.sub(r'\s*\d+\s*[~-]\s*\d+\s*쪽?', '', cleaned_line)
-                        cleaned_line = re.sub(r'[\(\[\{]\s*[\)\]\}]', '', cleaned_line).strip()
-                        if cleaned_line and cleaned_line != subject:
-                            topic = cleaned_line
-                            break
-                    if not topic and lines:
-                        topic = lines[-1] if len(lines) > 1 else lines[0]
+                if is_4row:
+                    r_subj = table[r_idx]
+                    r_unit = table[r_idx+1]
+                    r_topic = table[r_idx+2]
+                    r_page = table[r_idx+3]
 
-                    if subject or page_str or topic:
-                        available_books = get_available_books()
-                        mbid = match_book_id(subject, available_books)
-                        item = {
-                            "period": current_period,
-                            "subject": subject if subject else "학습",
-                            "matchedBookId": mbid,
-                            "topic": topic,
-                            "pageStr": page_str,
-                            "startPage": sp,
-                            "endPage": ep,
-                            "raw": cell_text.strip()
-                        }
-                        best_schedule[day].append(item)
+                    for d_idx, day in enumerate(DAY_NAMES):
+                        subj_text = ""
+                        unit_text = ""
+                        topic_text = ""
+                        page_text = ""
+
+                        # If day_col_map exists, find corresponding col
+                        matching_cols = [c for c, d in day_col_map.items() if d == day]
+                        if matching_cols:
+                            mc = matching_cols[0]
+                            subj_text = r_subj[mc] if mc < len(r_subj) else ""
+                            unit_text = r_unit[mc] if mc < len(r_unit) else ""
+                            topic_text = r_topic[mc] if mc < len(r_topic) else ""
+                            # Page row might have 2 cells per day (front cell is textbook page)
+                            if len(r_page) >= 10:
+                                page_text = r_page[d_idx * 2] if d_idx * 2 < len(r_page) else ""
+                            elif mc < len(r_page):
+                                page_text = r_page[mc]
+                        else:
+                            c = d_idx + 1
+                            subj_text = r_subj[c] if c < len(r_subj) else ""
+                            unit_text = r_unit[d_idx] if d_idx < len(r_unit) else (r_unit[c] if c < len(r_unit) else "")
+                            topic_text = r_topic[d_idx] if d_idx < len(r_topic) else (r_topic[c] if c < len(r_topic) else "")
+                            if len(r_page) >= 10:
+                                page_text = r_page[d_idx * 2] if d_idx * 2 < len(r_page) else ""
+                            else:
+                                page_text = r_page[d_idx] if d_idx < len(r_page) else ""
+
+                        subject = identify_subject(subj_text)
+                        page_str, sp, ep = extract_page_info(page_text)
+                        mbid = match_book_id(subject, available_books, unit=unit_text)
+
+                        clean_topic = topic_text if topic_text else unit_text
+                        if not clean_topic:
+                            clean_topic = subject
+
+                        if not subject and (topic_text or unit_text or page_str):
+                            subject = "창의적체험활동" if ("활동" in clean_topic or "교육" in clean_topic) else "활동"
+
+                        if subject or clean_topic or page_str:
+                            item = {
+                                "period": current_period,
+                                "subject": subject if subject else "학습",
+                                "matchedBookId": mbid,
+                                "topic": clean_topic,
+                                "pageStr": page_str,
+                                "startPage": sp,
+                                "endPage": ep,
+                                "raw": f"{subject} {unit_text} {topic_text} {page_str}".strip()
+                            }
+                            best_schedule[day].append(item)
+
+                    r_idx += 4
+                    current_period += 1
+                else:
+                    # Single row per period
+                    for c_idx, cell_text in enumerate(row):
+                        day = day_col_map.get(c_idx)
+                        if not day or not cell_text.strip():
+                            continue
+
+                        subject = identify_subject(cell_text)
+                        page_str, sp, ep = extract_page_info(cell_text)
                         
-                current_period += 1
+                        # Clean lines for topic
+                        lines = [ln.strip() for ln in cell_text.split('\n') if ln.strip()]
+                        topic = ""
+                        for ln in lines:
+                            cleaned_line = ln
+                            if subject:
+                                cleaned_line = re.sub(rf'^{re.escape(subject)}[:\s]*', '', cleaned_line)
+                            if page_str:
+                                cleaned_line = cleaned_line.replace(page_str, '').replace(f"({page_str})", '')
+                            cleaned_line = re.sub(r'[\(\[\{]\s*\d+.*?\d*\s*쪽?\s*[\)\]\}]', '', cleaned_line)
+                            cleaned_line = re.sub(r'\s*\d+\s*[~-]\s*\d+\s*쪽?', '', cleaned_line)
+                            cleaned_line = re.sub(r'[\(\[\{]\s*[\)\]\}]', '', cleaned_line).strip()
+                            if cleaned_line and cleaned_line != subject:
+                                topic = cleaned_line
+                                break
+                        if not topic and lines:
+                            topic = lines[-1] if len(lines) > 1 else lines[0]
+
+                        if subject or page_str or topic:
+                            mbid = match_book_id(subject, available_books)
+                            item = {
+                                "period": current_period,
+                                "subject": subject if subject else "학습",
+                                "matchedBookId": mbid,
+                                "topic": topic,
+                                "pageStr": page_str,
+                                "startPage": sp,
+                                "endPage": ep,
+                                "raw": cell_text.strip()
+                            }
+                            best_schedule[day].append(item)
+                            
+                    current_period += 1
+                    r_idx += 1
 
     return {
         "success": found,
@@ -696,7 +826,180 @@ def parse_with_rhwp(filepath):
 
     return None
 
+def is_hwpml_file(filepath):
+    """Check if the file is an HWPML XML document (even if named .hwp)"""
+    try:
+        with open(filepath, 'rb') as f:
+            header = f.read(512)
+            if b'<?xml' in header and (b'HWPML' in header or b'hwpml' in header or b'Hml' in header):
+                return True
+            if b'<HWPML' in header or b'<hwpml' in header:
+                return True
+    except Exception:
+        pass
+    return False
+
+def parse_hwpml(filepath):
+    """
+    Parse HWPML (Hangul Markup Language XML) weekly plan documents.
+    Supports multi-row period blocks (교과, 단원, 학습주제, 쪽수/준비물).
+    In 4-row layouts, the 4th row has 2 split cells per day:
+      - Front cell (index d*2): actual textbook page
+      - Back cell (index d*2+1): materials / homework
+    """
+    try:
+        tree = ET.parse(filepath)
+    except Exception:
+        with open(filepath, 'rb') as f:
+            content = f.read()
+        try:
+            tree = ET.fromstring(content.decode('utf-8'))
+        except Exception:
+            tree = ET.fromstring(content.decode('cp949', errors='ignore'))
+    
+    root = tree if isinstance(tree, ET.Element) else tree.getroot()
+    doc_title = os.path.splitext(os.path.basename(filepath))[0]
+    available_books = get_available_books()
+
+    # Search for doc title in tables or text (prefer semester/week title like "2학기 5주차 (2026.09.28.~2026.10.04.)")
+    for tbl in root.findall('.//TABLE'):
+        rows = tbl.findall('./ROW')
+        if len(rows) == 1:
+            for cell in rows[0].findall('./CELL'):
+                txt = " ".join("".join(cell.itertext()).split())
+                if re.search(r'\d+학기|\d+주차', txt):
+                    doc_title = txt
+                    break
+                elif re.search(r'\d+월|\d+일|주간학습안내', txt) and doc_title == os.path.splitext(os.path.basename(filepath))[0]:
+                    if len(txt) <= 60 and not re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}', txt):
+                        doc_title = txt
+
+    schedule = {d: [] for d in DAY_NAMES}
+    found = False
+
+    def get_cell_text(cell):
+        texts = []
+        for p in cell.findall('.//PARALIST'):
+            t = ''.join(p.itertext()).strip()
+            if t:
+                texts.append(t)
+        return ' '.join(' '.join(texts).split())
+
+    # Find schedule tables (tables with day headers)
+    for tbl in root.findall('.//TABLE'):
+        rows = tbl.findall('./ROW')
+        if len(rows) < 4:
+            continue
+
+        r0_cells = [get_cell_text(c) for c in rows[0].findall('./CELL')]
+        day_indices = {}
+        for c_idx, c_txt in enumerate(r0_cells):
+            for d in DAY_NAMES:
+                if d in c_txt and d not in day_indices.values():
+                    day_indices[c_idx] = d
+
+        if len(day_indices) < 3:
+            continue
+
+        found = True
+        r = 1
+        while r < len(rows):
+            curr_row_cells = [get_cell_text(c) for c in rows[r].findall('./CELL')]
+            if not curr_row_cells:
+                r += 1
+                continue
+
+            first_cell = curr_row_cells[0]
+            m_period = re.search(r'([1-8])\s*교시', first_cell)
+            if m_period:
+                period_num = int(m_period.group(1))
+
+                subj_cells = curr_row_cells[1:]
+                unit_cells = [get_cell_text(c) for c in rows[r+1].findall('./CELL')] if r+1 < len(rows) else []
+                topic_cells = [get_cell_text(c) for c in rows[r+2].findall('./CELL')] if r+2 < len(rows) else []
+                page_cells = [get_cell_text(c) for c in rows[r+3].findall('./CELL')] if r+3 < len(rows) else []
+
+                is_4row = True
+                for next_r in [unit_cells, topic_cells, page_cells]:
+                    if next_r and re.search(r'([1-8])\s*교시', next_r[0]):
+                        is_4row = False
+                        break
+
+                if is_4row and (unit_cells or topic_cells or page_cells):
+                    for d_idx, day in enumerate(DAY_NAMES):
+                        s = subj_cells[d_idx] if d_idx < len(subj_cells) else ""
+                        u = unit_cells[d_idx] if d_idx < len(unit_cells) else ""
+                        t = topic_cells[d_idx] if d_idx < len(topic_cells) else ""
+
+                        # In 4-row layout: front cell is textbook page!
+                        p_raw = ""
+                        if len(page_cells) >= 10:
+                            p_raw = page_cells[d_idx * 2]
+                        elif len(page_cells) >= 5:
+                            p_raw = page_cells[d_idx]
+
+                        page_str, sp, ep = extract_page_info(p_raw)
+                        mbid = match_book_id(s, available_books, unit=u)
+
+                        clean_topic = t if t else u
+                        if not clean_topic:
+                            clean_topic = s
+
+                        if not s and (t or u or page_str):
+                            s = "창의적체험활동" if ("활동" in clean_topic or "교육" in clean_topic) else "활동"
+
+                        if s or clean_topic or page_str:
+                            schedule[day].append({
+                                "period": period_num,
+                                "subject": s if s else "학습",
+                                "matchedBookId": mbid,
+                                "topic": clean_topic,
+                                "pageStr": page_str,
+                                "startPage": sp,
+                                "endPage": ep,
+                                "raw": f"{s} {u} {t} {page_str}".strip()
+                            })
+
+                    r += 4
+                else:
+                    # Single row per period
+                    for d_idx, day in enumerate(DAY_NAMES):
+                        cell_txt = subj_cells[d_idx] if d_idx < len(subj_cells) else ""
+                        if not cell_txt.strip():
+                            continue
+                        s = identify_subject(cell_txt)
+                        page_str, sp, ep = extract_page_info(cell_txt)
+                        mbid = match_book_id(s, available_books)
+                        schedule[day].append({
+                            "period": period_num,
+                            "subject": s if s else "학습",
+                            "matchedBookId": mbid,
+                            "topic": cell_txt[:40],
+                            "pageStr": page_str,
+                            "startPage": sp,
+                            "endPage": ep,
+                            "raw": cell_txt.strip()
+                        })
+                    r += 1
+            else:
+                r += 1
+
+    return {
+        "success": found and sum(len(v) for v in schedule.values()) > 0,
+        "title": doc_title,
+        "schedule": schedule
+    }
+
 def parse_file(filepath):
+    # 0. Try HWPML XML parser first (detects .hwp or .hml containing HWPML XML)
+    if is_hwpml_file(filepath):
+        try:
+            hwpml_res = parse_hwpml(filepath)
+            if hwpml_res is not None and hwpml_res.get("success"):
+                return hwpml_res
+        except Exception:
+            pass
+
     # 1. Try rhwp first for robust parsing of HWP and HWPX
     try:
         rhwp_res = parse_with_rhwp(filepath)

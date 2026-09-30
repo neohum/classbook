@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "주학습계획안 rhwp 고정밀 분석 엔진 적용, 교과서 모드 필기 시 상단 팝업 툴바 제거, 계획안 내 교과서 선택 및 빈 화면 활동 입력 지원, 기본 DB 연동 (v1.2.11)"
+    notes = "주간학습안내 HWPML/HWP 4칸 분할 구조(교과/단원/주제/쪽수 앞쪽칸) 자동 인식 및 슬생·즐생·바생 통합교과 '하루' 매칭 고도화 (v1.2.12)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

@@ -470,8 +470,11 @@ export default function WeeklyPlanScheduleModal({
                                                 onChange={(e) => setEditingItem({ ...editingItem, matchedBookId: e.target.value })}
                                                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500"
                                             >
-                                                {availableBooks.length === 0 && (
+                                                {availableBooks.length === 0 && !editingItem.matchedBookId && (
                                                     <option value="">교과서 없음</option>
+                                                )}
+                                                {editingItem.matchedBookId && !availableBooks.some(b => b.id === editingItem.matchedBookId) && (
+                                                    <option value={editingItem.matchedBookId}>{editingItem.matchedBookId}</option>
                                                 )}
                                                 {availableBooks.map(b => (
                                                     <option key={b.id} value={b.id}>{b.title}</option>
