@@ -1015,13 +1015,131 @@ def parse_hwpml(filepath):
         "schedule": schedule
     }
 
+def merge_period_items(items):
+    if not items:
+        return None
+    if len(items) == 1:
+        return items[0]
+
+    period = items[0].get('period', 1)
+
+    # 1. Subject: pick first non-'학습' and non-empty subject
+    subject = ''
+    for itm in items:
+        s = itm.get('subject', '').strip()
+        if s and s != '학습':
+            subject = s
+            break
+    if not subject:
+        for itm in items:
+            s = itm.get('subject', '').strip()
+            if s:
+                subject = s
+                break
+    if not subject:
+        subject = '학습'
+
+    # 2. Book ID
+    matchedBookId = ''
+    for itm in items:
+        bid = itm.get('matchedBookId', '').strip()
+        if bid:
+            matchedBookId = bid
+            break
+
+    # 3. Page
+    pageStr = ''
+    startPage = None
+    endPage = None
+    for itm in items:
+        p_str = itm.get('pageStr', '').strip()
+        if p_str:
+            pageStr = p_str
+            startPage = itm.get('startPage')
+            endPage = itm.get('endPage')
+            break
+
+    # 4. Topic
+    topic = ''
+    candidates = []
+    for itm in items:
+        t = itm.get('topic', '').strip()
+        if not t:
+            continue
+        if t == subject or t in ('학습', '수업'):
+            continue
+        if re.match(r'^\d+[\s~-]+\d+.*$', t):
+            continue
+        is_unit = bool(re.match(r'^\d+\.', t))
+        candidates.append((1 if is_unit else 0, -len(t), t))
+
+    if candidates:
+        candidates.sort(key=lambda x: (x[0], x[1]))
+        topic = candidates[0][2]
+    else:
+        for itm in items:
+            t = itm.get('topic', '').strip()
+            if t and not re.match(r'^\d+[\s~-]+\d+.*$', t):
+                topic = t
+                break
+        if not topic:
+            topic = subject
+
+    topic = re.sub(r'\s*\(\s*/\s*\)\s*$', '', topic).strip()
+
+    # 5. Raw
+    raw_parts = []
+    for itm in items:
+        r = itm.get('raw', '').strip()
+        if r and r not in raw_parts:
+            raw_parts.append(r)
+
+    return {
+        'period': period,
+        'subject': subject,
+        'matchedBookId': matchedBookId,
+        'topic': topic,
+        'pageStr': pageStr,
+        'startPage': startPage,
+        'endPage': endPage,
+        'raw': ' '.join(raw_parts)
+    }
+
+def sanitize_result(res):
+    if not res or not res.get("success"):
+        return res
+    sched = res.get("schedule", {})
+    new_sched = {}
+    for day in DAY_NAMES:
+        day_items = sched.get(day, [])
+        if not day_items:
+            new_sched[day] = []
+            continue
+
+        grouped = {}
+        for itm in day_items:
+            p = itm.get('period', 1)
+            if p not in grouped:
+                grouped[p] = []
+            grouped[p].append(itm)
+
+        merged_day = []
+        for p in sorted(grouped.keys()):
+            m_item = merge_period_items(grouped[p])
+            if m_item:
+                merged_day.append(m_item)
+        new_sched[day] = merged_day
+
+    res["schedule"] = new_sched
+    return res
+
 def parse_file(filepath):
     # 0. Try HWPML XML parser first (detects .hwp or .hml containing HWPML XML)
     if is_hwpml_file(filepath):
         try:
             hwpml_res = parse_hwpml(filepath)
             if hwpml_res is not None and hwpml_res.get("success"):
-                return hwpml_res
+                return sanitize_result(hwpml_res)
         except Exception:
             pass
 
@@ -1029,16 +1147,16 @@ def parse_file(filepath):
     try:
         rhwp_res = parse_with_rhwp(filepath)
         if rhwp_res is not None and rhwp_res.get("success"):
-            return rhwp_res
+            return sanitize_result(rhwp_res)
     except Exception:
         pass
 
     # 2. Fallback to existing parsers
     ext = os.path.splitext(filepath)[1].lower()
     if ext == '.hwpx':
-        return parse_hwpx(filepath)
+        return sanitize_result(parse_hwpx(filepath))
     elif ext == '.hwp':
-        return parse_hwp(filepath)
+        return sanitize_result(parse_hwp(filepath))
     else:
         raise ValueError(f"Unsupported file format: {ext}")
 

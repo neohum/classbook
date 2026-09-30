@@ -137,7 +137,97 @@ export default function WeeklyPlanScheduleModal({
         }
     };
 
-    const currentDayItems = plan?.schedule ? plan.schedule[selectedDay] || [] : [];
+    const currentDayItems = React.useMemo(() => {
+        const rawItems = plan?.schedule ? plan.schedule[selectedDay] || [] : [];
+        if (!rawItems || rawItems.length === 0) return [];
+
+        const grouped = new Map<number, main.WeeklyPlanItem[]>();
+        for (const itm of rawItems) {
+            const p = itm.period || 1;
+            if (!grouped.has(p)) grouped.set(p, []);
+            grouped.get(p)!.push(itm);
+        }
+
+        const mergedList: main.WeeklyPlanItem[] = [];
+        const sortedPeriods = Array.from(grouped.keys()).sort((a, b) => a - b);
+
+        for (const p of sortedPeriods) {
+            const list = grouped.get(p)!;
+            if (list.length === 1) {
+                mergedList.push(list[0]);
+                continue;
+            }
+
+            // Merge multiple items belonging to the same period
+            let bestSubject = '';
+            for (const itm of list) {
+                const s = (itm.subject || '').trim();
+                if (s && s !== '학습') { bestSubject = s; break; }
+            }
+            if (!bestSubject) {
+                for (const itm of list) {
+                    const s = (itm.subject || '').trim();
+                    if (s) { bestSubject = s; break; }
+                }
+            }
+            if (!bestSubject) bestSubject = '학습';
+
+            let bestBookId = '';
+            for (const itm of list) {
+                const b = (itm.matchedBookId || '').trim();
+                if (b) { bestBookId = b; break; }
+            }
+
+            let bestPageStr = '';
+            let bestStartPage = 0;
+            let bestEndPage = 0;
+            for (const itm of list) {
+                if (itm.pageStr || (itm.startPage && itm.startPage > 0)) {
+                    bestPageStr = itm.pageStr || '';
+                    bestStartPage = itm.startPage || 0;
+                    bestEndPage = itm.endPage || 0;
+                    break;
+                }
+            }
+
+            let bestTopic = '';
+            const candidates: { isUnit: boolean; len: number; text: string }[] = [];
+            for (const itm of list) {
+                const t = (itm.topic || '').trim();
+                if (!t || t === bestSubject || t === '학습' || t === '수업') continue;
+                if (/^\d+[\s~-]+\d+.*$/.test(t)) continue;
+                const isUnit = /^\d+\./.test(t);
+                candidates.push({ isUnit, len: t.length, text: t });
+            }
+
+            if (candidates.length > 0) {
+                candidates.sort((a, b) => {
+                    if (a.isUnit !== b.isUnit) return a.isUnit ? 1 : -1;
+                    return b.len - a.len;
+                });
+                bestTopic = candidates[0].text;
+            } else {
+                for (const itm of list) {
+                    const t = (itm.topic || '').trim();
+                    if (t && !/^\d+[\s~-]+\d+.*$/.test(t)) { bestTopic = t; break; }
+                }
+                if (!bestTopic) bestTopic = bestSubject;
+            }
+
+            mergedList.push({
+                period: p,
+                subject: bestSubject,
+                matchedBookId: bestBookId,
+                startPage: bestStartPage,
+                endPage: bestEndPage,
+                pageStr: bestPageStr,
+                topic: bestTopic,
+                raw: list.map(i => i.raw || '').filter(Boolean).join(' ')
+            });
+        }
+
+        return mergedList;
+    }, [plan, selectedDay]);
 
     // Open item editor for adding
     const handleStartAdd = () => {
@@ -179,9 +269,11 @@ export default function WeeklyPlanScheduleModal({
         if (!plan) return;
         if (!window.confirm("이 수업 항목을 계획안에서 삭제하시겠습니까?")) return;
 
+        const targetItem = currentDayItems[idx];
         const updatedSchedule = { ...plan.schedule };
-        const dayList = [...(updatedSchedule[selectedDay] || [])];
-        dayList.splice(idx, 1);
+        const dayList = (updatedSchedule[selectedDay] || []).filter(
+            it => it.period !== targetItem.period
+        );
         updatedSchedule[selectedDay] = dayList;
 
         const updatedPlan: main.WeeklyPlanResult = {
@@ -203,7 +295,9 @@ export default function WeeklyPlanScheduleModal({
         };
 
         const updatedSchedule = { ...(targetPlan.schedule || {}) };
-        const dayList = [...(updatedSchedule[editingItem.day] || [])];
+        const dayList = (updatedSchedule[editingItem.day] || []).filter(
+            it => it.period !== Number(editingItem.period)
+        );
 
         const newItem: main.WeeklyPlanItem = {
             period: Number(editingItem.period),
@@ -216,13 +310,7 @@ export default function WeeklyPlanScheduleModal({
             raw: `${editingItem.subject} ${editingItem.topic}`
         };
 
-        if (editingItem.isNew) {
-            dayList.push(newItem);
-        } else if (editingItem.index !== undefined && editingItem.index >= 0) {
-            dayList[editingItem.index] = newItem;
-        }
-
-        // Sort by period ascending
+        dayList.push(newItem);
         dayList.sort((a, b) => (a.period || 0) - (b.period || 0));
         updatedSchedule[editingItem.day] = dayList;
 
@@ -348,7 +436,8 @@ export default function WeeklyPlanScheduleModal({
                     <div className="px-6 pt-3 pb-2 border-b border-slate-100 flex items-center justify-between gap-2">
                         <div className="flex gap-1.5 flex-1">
                             {DAY_LABELS.map((day) => {
-                                const count = plan?.schedule?.[day]?.length || 0;
+                                const dayItems = plan?.schedule?.[day] || [];
+                                const count = new Set(dayItems.map(i => i.period || 0)).size;
                                 const isSelected = selectedDay === day;
                                 return (
                                     <button

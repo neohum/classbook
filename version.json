@@ -1,9 +1,9 @@
 {
-  "version": "1.2.14",
+  "version": "1.2.15",
   "releaseDate": "2026-09-30",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.14/classbook-setup-v1.2.14.exe",
-  "installerName": "classbook-setup-v1.2.14.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.14.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T030305Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f49796a01b17ac9b9c90a9a7d31f5275228c600adc00994abc9868839a676a8c",
-  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.14.exe",
-  "notes": "주간학습안내 4행 교시 구조(교과·단원·주제·쪽수) 인식 개선 및 교시 중복 방지 (v1.2.14)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.15/classbook-setup-v1.2.15.exe",
+  "installerName": "classbook-setup-v1.2.15.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.15.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T031457Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=76ab9164b8c7e5f779430d62160e6d625a0a9a9127266e805dc9f8b0935f4cc5",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.15.exe",
+  "notes": "주간학습안내 교시별 1칸 보장(다중 항목 단일 교시 병합) 및 임베디드 스크립트 실행 보장 (v1.2.15)"
 }

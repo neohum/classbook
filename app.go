@@ -24,7 +24,7 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.14"
+const AppVersion = "1.2.15"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -570,14 +570,19 @@ func (a *App) SelectWeeklyPlanFileDialog() (*WeeklyPlanResult, error) {
 
 // ParseWeeklyPlanFile executes the Python script to parse a HWP or HWPX file
 func (a *App) ParseWeeklyPlanFile(filePath string) (*WeeklyPlanResult, error) {
-	cwd, _ := os.Getwd()
-	scriptPath := filepath.Join(cwd, "parse_weekly_plan.py")
-
-	// If script doesn't exist on disk, extract embedded script to temp
-	if _, err := os.Stat(scriptPath); err != nil {
-		tempScript := filepath.Join(os.TempDir(), "classbook_parse_weekly_plan.py")
-		if err := os.WriteFile(tempScript, embeddedWeeklyPlanScript, 0644); err == nil {
-			scriptPath = tempScript
+	// Always write the latest embedded script to TempDir so that any stale or unpatched
+	// script sitting in CWD / Program Files is never mistakenly executed.
+	tempScript := filepath.Join(os.TempDir(), "classbook_parse_weekly_plan.py")
+	scriptPath := tempScript
+	if err := os.WriteFile(tempScript, embeddedWeeklyPlanScript, 0644); err != nil {
+		cwd, _ := os.Getwd()
+		scriptPath = filepath.Join(cwd, "parse_weekly_plan.py")
+	} else {
+		// Also update script in cwd if it exists and is writable
+		cwd, _ := os.Getwd()
+		localScript := filepath.Join(cwd, "parse_weekly_plan.py")
+		if _, err := os.Stat(localScript); err == nil && cwd != "D:\\works\\classbook" {
+			_ = os.WriteFile(localScript, embeddedWeeklyPlanScript, 0644)
 		}
 	}
 
