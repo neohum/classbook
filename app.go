@@ -24,7 +24,7 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.10"
+const AppVersion = "1.2.11"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -757,6 +757,17 @@ func (a *App) saveCurrentPlan() {
 	if err == nil {
 		_ = os.WriteFile(cacheFile, data, 0644)
 	}
+}
+
+// SaveWeeklyPlan persists the weekly plan to disk (latest_weekly_plan.json) and updates memory
+func (a *App) SaveWeeklyPlan(plan *WeeklyPlanResult) error {
+	if plan == nil {
+		return fmt.Errorf("plan is nil")
+	}
+	a.currentPlan = plan
+	a.saveCurrentPlan()
+	runtime.EventsEmit(a.ctx, "weekly-plan-updated", plan)
+	return nil
 }
 
 func (a *App) loadLatestPlan() (*WeeklyPlanResult, error) {

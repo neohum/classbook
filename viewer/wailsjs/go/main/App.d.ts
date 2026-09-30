@@ -34,6 +34,8 @@ export function ReanalyzeWeeklyPlan():Promise<main.WeeklyPlanResult>;
 
 export function SavePageImage(arg1:string,arg2:number,arg3:string):Promise<void>;
 
+export function SaveWeeklyPlan(arg1:main.WeeklyPlanResult):Promise<void>;
+
 export function SelectMultiplePdfsDialog():Promise<Array<string>>;
 
 export function SelectPdfDialog():Promise<string>;

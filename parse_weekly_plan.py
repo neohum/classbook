@@ -9,6 +9,10 @@ try:
     import olefile
 except ImportError:
     olefile = None
+try:
+    import rhwp
+except ImportError:
+    rhwp = None
 
 # Known subjects keywords and mapping to default textbook names
 SUBJECT_MAP = {
@@ -598,7 +602,110 @@ def process_paragraphs(paragraphs, doc_title):
         "schedule": schedule
     }
 
+def extract_rhwp_cell_text(cell):
+    texts = []
+    for b in getattr(cell, 'blocks', []):
+        if hasattr(b, 'text') and b.text:
+            texts.append(b.text.strip())
+        elif hasattr(b, 'inlines'):
+            for r in b.inlines:
+                if hasattr(r, 'text') and r.text:
+                    texts.append(r.text.strip())
+        elif hasattr(b, 'paragraphs'):
+            for p in b.paragraphs:
+                if hasattr(p, 'text') and p.text:
+                    texts.append(p.text.strip())
+    return "\n".join([t for t in texts if t]).strip()
+
+def convert_rhwp_table_to_matrix(tbl):
+    rows = getattr(tbl, 'rows', 0)
+    cols = getattr(tbl, 'cols', 0)
+    if rows <= 0 or cols <= 0:
+        return []
+    matrix = [["" for _ in range(cols)] for _ in range(rows)]
+    for cell in getattr(tbl, 'cells', []):
+        txt = extract_rhwp_cell_text(cell)
+        r = getattr(cell, 'row', 0)
+        c = getattr(cell, 'col', 0)
+        r_span = getattr(cell, 'row_span', 1) or 1
+        c_span = getattr(cell, 'col_span', 1) or 1
+        for dr in range(r_span):
+            for dc in range(c_span):
+                tr, tc = r + dr, c + dc
+                if 0 <= tr < rows and 0 <= tc < cols:
+                    if dr == 0 and dc == 0:
+                        matrix[tr][tc] = txt
+                    elif not matrix[tr][tc]:
+                        matrix[tr][tc] = txt
+    return matrix
+
+def find_all_tables_from_rhwp_ir(ir):
+    tables = []
+
+    def walk_blocks(blocks):
+        for b in blocks:
+            if getattr(b, 'kind', '') == 'table' or hasattr(b, 'cells'):
+                tables.append(b)
+            if hasattr(b, 'cells'):
+                for cell in b.cells:
+                    if hasattr(cell, 'blocks'):
+                        walk_blocks(cell.blocks)
+            if hasattr(b, 'blocks'):
+                walk_blocks(b.blocks)
+
+    if hasattr(ir, 'body'):
+        walk_blocks(ir.body)
+    return tables
+
+def parse_with_rhwp(filepath):
+    if rhwp is None:
+        return None
+    try:
+        doc = rhwp.parse(filepath)
+    except Exception:
+        return None
+
+    doc_title = os.path.splitext(os.path.basename(filepath))[0]
+
+    # 1. Try extracting tables from IR
+    try:
+        ir = doc.to_ir()
+        tables = find_all_tables_from_rhwp_ir(ir)
+        if tables:
+            matrices = []
+            for tbl in tables:
+                m = convert_rhwp_table_to_matrix(tbl)
+                if m and len(m) > 0 and len(m[0]) > 0:
+                    matrices.append(m)
+            if matrices:
+                res = process_tables(matrices, doc_title)
+                if res.get("success") and sum(len(v) for v in res.get("schedule", {}).values()) > 0:
+                    return res
+    except Exception:
+        pass
+
+    # 2. Try paragraph extraction
+    try:
+        paras = doc.paragraphs()
+        if paras:
+            res = process_paragraphs(paras, doc_title)
+            if res.get("success") and sum(len(v) for v in res.get("schedule", {}).values()) > 0:
+                return res
+    except Exception:
+        pass
+
+    return None
+
 def parse_file(filepath):
+    # 1. Try rhwp first for robust parsing of HWP and HWPX
+    try:
+        rhwp_res = parse_with_rhwp(filepath)
+        if rhwp_res is not None and rhwp_res.get("success"):
+            return rhwp_res
+    except Exception:
+        pass
+
+    # 2. Fallback to existing parsers
     ext = os.path.splitext(filepath)[1].lower()
     if ext == '.hwpx':
         return parse_hwpx(filepath)

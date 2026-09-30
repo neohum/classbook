@@ -1095,9 +1095,33 @@ export default function ViewerPage() {
         setInputPage((currentPage - pageOffset).toString());
     }, [currentPage, pageOffset]);
 
+    // Handle topic/subject/period from URL params (e.g. from Weekly Plan)
+    useEffect(() => {
+        const topicParam = searchParams.get('topic');
+        const subjectParam = searchParams.get('subject');
+        const periodParam = searchParams.get('period');
+        if (topicParam || subjectParam || periodParam) {
+            setActiveLesson({
+                periodName: periodParam || (bookId === 'blank' ? '활동 수업' : '수업'),
+                subject: subjectParam || (bookId === 'blank' ? '활동' : (bookId || '수업')),
+                pageStr: searchParams.get('targetPage') ? `${searchParams.get('targetPage')}쪽` : '',
+                startPage: searchParams.get('targetPage') ? parseInt(searchParams.get('targetPage')!, 10) : 0,
+                topic: topicParam || '',
+                matchedBookId: bookId || ''
+            });
+        }
+    }, [bookId, searchParams]);
+
     // Initialize and load PDF metadata
     useEffect(() => {
         if (!bookId) return;
+
+        if (bookId === 'blank') {
+            setNumPages(1);
+            setCurrentPage(1);
+            setLoading(false);
+            return;
+        }
 
         const loadMetadata = async () => {
             setLoading(true);
@@ -1233,28 +1257,47 @@ export default function ViewerPage() {
                 className="h-16 flex-shrink-0 border-b border-slate-800 flex items-center justify-center px-4 bg-slate-900/90 backdrop-blur-md z-40 touch-none select-none cursor-move relative"
             >
                 <div className="flex items-center gap-4">
-                    <span className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow">
-                        {bookId || '교과서'}
-                    </span>
-                    <span className="text-violet-400 font-extrabold text-xl sm:text-2xl select-none">|</span>
-                    <form onSubmit={handlePageSubmit} className="flex items-center gap-1.5 bg-slate-800/90 px-3.5 py-1.5 rounded-full border border-slate-700/80 shadow-inner">
-                        <input
-                            type="number"
-                            min="1"
-                            max={numPages}
-                            value={inputPage}
-                            onChange={(e) => setInputPage(e.target.value)}
-                            onBlur={handlePageSubmit}
-                            className="bg-transparent text-violet-300 font-black text-2xl sm:text-3xl w-16 text-center outline-none"
-                            aria-label="이동할 쪽수"
-                        />
-                        <span className="text-lg sm:text-xl font-bold text-slate-300 select-none">쪽</span>
-                        <span className="text-xs text-slate-500 select-none ml-1">/ {numPages}</span>
-                    </form>
-                    {rightPage && (
-                        <span className="text-sm font-semibold text-slate-400 hidden md:inline ml-2">
-                            ({getPrintedPage(leftPage)} ~ {getPrintedPage(rightPage)}쪽 펼침)
-                        </span>
+                    {bookId === 'blank' ? (
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow flex items-center gap-2">
+                                <Square className="w-6 h-6 text-violet-400" />
+                                <span>{activeLesson?.subject || '빈 화면 (수업 활동)'}</span>
+                            </span>
+                            {activeLesson?.topic && (
+                                <>
+                                    <span className="text-violet-400 font-extrabold text-xl select-none">|</span>
+                                    <span className="text-base sm:text-lg font-bold text-slate-300 max-w-md truncate">
+                                        {activeLesson.topic}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                    ) : (
+                        <>
+                            <span className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow">
+                                {bookId || '교과서'}
+                            </span>
+                            <span className="text-violet-400 font-extrabold text-xl sm:text-2xl select-none">|</span>
+                            <form onSubmit={handlePageSubmit} className="flex items-center gap-1.5 bg-slate-800/90 px-3.5 py-1.5 rounded-full border border-slate-700/80 shadow-inner">
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max={numPages}
+                                    value={inputPage}
+                                    onChange={(e) => setInputPage(e.target.value)}
+                                    onBlur={handlePageSubmit}
+                                    className="bg-transparent text-violet-300 font-black text-2xl sm:text-3xl w-16 text-center outline-none"
+                                    aria-label="이동할 쪽수"
+                                />
+                                <span className="text-lg sm:text-xl font-bold text-slate-300 select-none">쪽</span>
+                                <span className="text-xs text-slate-500 select-none ml-1">/ {numPages}</span>
+                            </form>
+                            {rightPage && (
+                                <span className="text-sm font-semibold text-slate-400 hidden md:inline ml-2">
+                                    ({getPrintedPage(leftPage)} ~ {getPrintedPage(rightPage)}쪽 펼침)
+                                </span>
+                            )}
+                        </>
                     )}
                 </div>
             </header>
@@ -1404,13 +1447,30 @@ export default function ViewerPage() {
                     </div>
                 </div>
 
-                {/* Image Spread */}
-                <div className="flex items-center justify-center h-full relative z-0">
-                    <PageRenderer bookId={bookId!} pageNumber={leftPage} scale={scale} />
-                    {rightPage && (
-                        <PageRenderer bookId={bookId!} pageNumber={rightPage} scale={scale} />
-                    )}
-                </div>
+                {/* Center Area: Blank Screen Board or Image Spread */}
+                {bookId === 'blank' ? (
+                    <div className={`w-full h-full flex flex-col items-center justify-center p-8 transition-colors select-none ${isWhiteboard ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}>
+                        <div className={`max-w-3xl w-full p-8 sm:p-12 rounded-3xl border shadow-2xl backdrop-blur-md text-center transition-all ${isWhiteboard ? 'bg-slate-50/90 border-slate-300 text-slate-900 shadow-slate-300/40' : 'bg-slate-800/80 border-violet-500/30 text-white shadow-black/60'}`}>
+                            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-600/20 border border-violet-400/40 text-violet-400 font-extrabold text-sm mb-4">
+                                <span>{activeLesson?.periodName || '활동 수업'}</span>
+                                {activeLesson?.subject && <span>• {activeLesson.subject}</span>}
+                            </div>
+                            <h2 className="text-3xl sm:text-5xl font-black mb-4 tracking-tight break-keep leading-tight drop-shadow-sm">
+                                {activeLesson?.topic || activeLesson?.subject || '빈 화면 (활동 수업)'}
+                            </h2>
+                            <p className={`text-sm sm:text-base font-medium max-w-xl mx-auto break-keep ${isWhiteboard ? 'text-slate-600' : 'text-slate-300'}`}>
+                                {activeLesson?.topic ? '교과서 없는 활동 수업입니다. 판서 도구를 이용해 자유롭게 필기하세요.' : '판서 모드를 켜고 화면에 자유롭게 필기하거나 수업을 진행하세요.'}
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-center h-full relative z-0">
+                        <PageRenderer bookId={bookId!} pageNumber={leftPage} scale={scale} />
+                        {rightPage && (
+                            <PageRenderer bookId={bookId!} pageNumber={rightPage} scale={scale} />
+                        )}
+                    </div>
+                )}
 
                 {/* Right Side Controls - Compact & Bottom Floating Dock */}
                 <div
@@ -1568,48 +1628,6 @@ export default function ViewerPage() {
                 style={{ display: isDrawingMode ? 'block' : 'none', WebkitTouchCallout: 'none', touchAction: 'none' }}
             />
 
-            {/* Floating Drawing Toolbar */}
-            {isDrawingMode && (
-                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-800/90 backdrop-blur border border-slate-600 rounded-full py-2 px-4 shadow-xl pointer-events-auto">
-                    {/* Colors */}
-                    <button onClick={() => { setColor('#ef4444'); setIsEraser(false); }} className={`w-6 h-6 rounded-full bg-red-500 border-2 ${color === '#ef4444' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="빨강" />
-                    <button onClick={() => { setColor('#3b82f6'); setIsEraser(false); }} className={`w-6 h-6 rounded-full bg-blue-500 border-2 ${color === '#3b82f6' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="파랑" />
-                    <button onClick={() => { setColor('#eab308'); setIsEraser(false); setLineWidth(12); }} className={`w-6 h-6 rounded-full bg-yellow-500/50 border-2 ${color === '#eab308' && !isEraser ? 'border-white scale-110' : 'border-transparent'} transition-all`} title="형광펜" />
-                    <button onClick={() => { setColor('#000000'); setIsEraser(false); setLineWidth(4); }} className={`w-6 h-6 rounded-full bg-black border-2 ${color === '#000000' && !isEraser ? 'border-white scale-110' : 'border-slate-500'} transition-all`} title="검정" />
-
-                    <div className="w-px h-6 bg-slate-600 mx-2" />
-
-                    {/* Eraser */}
-                    <button
-                        onClick={() => setIsEraser(true)}
-                        className={`p-1.5 rounded-full transition-colors ${isEraser ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`}
-                        title="지우개"
-                    >
-                        <Eraser className="w-5 h-5" />
-                    </button>
-
-                    {/* Clear All */}
-                    <button
-                        onClick={clearCanvas}
-                        className="p-1.5 text-slate-300 hover:text-red-400 hover:bg-slate-700 rounded-full transition-colors ml-1"
-                        title="전체 지우기"
-                    >
-                        <Trash2 className="w-5 h-5" />
-                    </button>
-
-                    <div className="w-px h-6 bg-slate-600 mx-2" />
-
-                    {/* Whiteboard Mode */}
-                    <button
-                        onClick={() => setIsWhiteboard(!isWhiteboard)}
-                        className={`p-1.5 rounded-md transition-colors ${isWhiteboard ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'}`}
-                        title="흰색 배경 켜기/끄기"
-                    >
-                        <Square className="w-5 h-5 fill-current" />
-                    </button>
-                </div>
-            )}
-
             {/* Progress Bar */}
             <div className="h-1.5 bg-slate-800 w-full flex-shrink-0 relative">
                 <div
@@ -1692,8 +1710,35 @@ export default function ViewerPage() {
                     currentPlanRef.current = newPlan;
                     applyWeeklyPlanNow(newPlan);
                 }}
-                onWatchFolderChanged={(newFolder) => setWatchFolder(newFolder)}
-                onGoToBook={handleGoToWeeklyBook}
+                onGoToBook={(targetBookId, targetPage, itm) => {
+                    if (itm) {
+                        setActiveLesson({
+                            periodName: `${itm.period}교시`,
+                            subject: itm.subject,
+                            pageStr: itm.pageStr || (itm.startPage ? `${itm.startPage}쪽` : ""),
+                            startPage: itm.startPage || targetPage || 1,
+                            topic: itm.topic,
+                            matchedBookId: targetBookId
+                        });
+                    }
+                    handleGoToWeeklyBook(targetBookId, targetPage);
+                }}
+                onGoToBlank={(subject, topic, period) => {
+                    setActiveLesson({
+                        periodName: period ? `${period}교시` : "활동 수업",
+                        subject: subject || "활동",
+                        pageStr: "",
+                        startPage: 0,
+                        topic: topic,
+                        matchedBookId: "blank"
+                    });
+                    setIsWeeklyPlanModalOpen(false);
+                    if (bookId === 'blank') {
+                        showToast(`빈 화면에 [${topic || subject}] 내용이 설정되었습니다.`);
+                    } else {
+                        navigate(`/viewer/blank?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}&period=${encodeURIComponent(period ? `${period}교시` : "활동 수업")}`);
+                    }
+                }}
             />
 
             {/* Unified Class & Rest Alert Modal */}

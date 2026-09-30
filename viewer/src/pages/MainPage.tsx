@@ -499,12 +499,20 @@ export default function MainPage() {
     };
 
     // Quick navigation from weekly plan to book page
-    const handleGoToBook = (bookId: string, pageNumber: number) => {
+    const handleGoToBook = (bookId: string, pageNumber: number, item?: any) => {
         const resolved = resolveBookForSubject(bookId, bookId, textbooks);
         const targetId = resolved ? resolved.id : bookId;
         const bookName = resolved ? resolved.title : bookId;
         showToast(`[${bookName} ${pageNumber}쪽]으로 이동합니다.`);
-        navigate(`/viewer/${encodeURIComponent(targetId)}?targetPage=${pageNumber}`);
+        const topicQ = item?.topic ? `&topic=${encodeURIComponent(item.topic)}` : '';
+        const subjQ = item?.subject ? `&subject=${encodeURIComponent(item.subject)}` : '';
+        const periodQ = item?.period ? `&period=${encodeURIComponent(`${item.period}교시`)}` : '';
+        navigate(`/viewer/${encodeURIComponent(targetId)}?targetPage=${pageNumber}${topicQ}${subjQ}${periodQ}`);
+    };
+
+    const handleGoToBlank = (subject: string, topic: string, period?: number) => {
+        showToast(`빈 화면 [${subject || '활동 수업'}]으로 이동합니다.`);
+        navigate(`/viewer/blank?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}&period=${encodeURIComponent(period ? `${period}교시` : '활동 수업')}`);
     };
 
     // Manual trigger for current time class alert (or test preview)
@@ -782,6 +790,7 @@ export default function MainPage() {
                     showToast(`감시 폴더가 '${newFolder}'로 설정되었습니다.`);
                 }}
                 onGoToBook={handleGoToBook}
+                onGoToBlank={handleGoToBlank}
             />
 
             {/* Class Period Alert Modal */}
