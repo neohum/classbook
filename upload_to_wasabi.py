@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "수업 시작 시간 대형 알림(교과서 쪽수·주제 강조 및 수동 닫기) 적용, 상단 플로팅 교시 바 제거 (v1.2.13)"
+    notes = "주간학습안내 4행 교시 구조(교과·단원·주제·쪽수) 인식 개선 및 교시 중복 방지 (v1.2.14)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()
@@ -63,7 +63,8 @@ def main():
     res_installer = subprocess.run([
         "aws", "s3", "cp", local_installer, f"s3://{bucket}/{installer_s3_key}",
         "--endpoint-url", endpoint,
-        "--content-type", "application/vnd.microsoft.portable-executable"
+        "--content-type", "application/vnd.microsoft.portable-executable",
+        "--acl", "public-read"
     ], env=cmd_env, capture_output=True, text=True)
 
     if res_installer.returncode != 0:
@@ -124,7 +125,8 @@ def main():
     res_version = subprocess.run([
         "aws", "s3", "cp", local_version_file, f"s3://{bucket}/{version_s3_key}",
         "--endpoint-url", endpoint,
-        "--content-type", "application/json"
+        "--content-type", "application/json",
+        "--acl", "public-read"
     ], env=cmd_env, capture_output=True, text=True)
 
     if res_version.returncode != 0:

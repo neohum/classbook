@@ -386,6 +386,25 @@ def process_tables(tables, doc_title):
 
         if header_row_idx >= 0 and len(day_col_map) >= 3:
             found = True
+            
+            # Detect whether table uses 4-row-per-period layout across periods
+            distinct_periods = []
+            seen_p = set()
+            for r in range(header_row_idx + 1, len(table)):
+                row_h = " ".join(table[r][:2])
+                m = re.search(r'([1-8])\s*교시?', row_h)
+                if m:
+                    p = int(m.group(1))
+                    if p not in seen_p:
+                        seen_p.add(p)
+                        distinct_periods.append((r, p))
+
+            is_table_4row = False
+            if len(distinct_periods) >= 2:
+                diffs = [distinct_periods[i+1][0] - distinct_periods[i][0] for i in range(len(distinct_periods)-1)]
+                if all(d == 4 for d in diffs) or (sum(1 for d in diffs if d == 4) >= len(diffs) * 0.7):
+                    is_table_4row = True
+
             current_period = 1
             r_idx = header_row_idx + 1
 
@@ -403,17 +422,23 @@ def process_tables(tables, doc_title):
 
                 # Check if this table uses 4 rows per period
                 # (Row 0: Subject, Row 1: Unit, Row 2: Topic, Row 3: Page/Materials)
-                is_4row = False
-                if r_idx + 3 < len(table):
-                    h1 = " ".join(table[r_idx+1][:2])
-                    h2 = " ".join(table[r_idx+2][:2])
-                    h3 = " ".join(table[r_idx+3][:2])
-                    if not re.search(r'([1-8])\s*교시', h1) and \
-                       not re.search(r'([1-8])\s*교시', h2) and \
-                       not re.search(r'([1-8])\s*교시', h3):
-                        is_4row = True
+                is_4row = is_table_4row
+                if not is_4row and r_idx + 3 < len(table):
+                    p1_m = re.search(r'([1-8])\s*교시', " ".join(table[r_idx+1][:2]))
+                    p2_m = re.search(r'([1-8])\s*교시', " ".join(table[r_idx+2][:2]))
+                    p3_m = re.search(r'([1-8])\s*교시', " ".join(table[r_idx+3][:2]))
+                    p1 = int(p1_m.group(1)) if p1_m else None
+                    p2 = int(p2_m.group(1)) if p2_m else None
+                    p3 = int(p3_m.group(1)) if p3_m else None
+                    if p1 in (None, current_period) and p2 in (None, current_period) and p3 in (None, current_period):
+                        if r_idx + 4 < len(table):
+                            p4_m = re.search(r'([1-8])\s*교시', " ".join(table[r_idx+4][:2]))
+                            if p4_m and int(p4_m.group(1)) != current_period:
+                                is_4row = True
+                        else:
+                            is_4row = True
 
-                if is_4row:
+                if is_4row and r_idx + 3 < len(table):
                     r_subj = table[r_idx]
                     r_unit = table[r_idx+1]
                     r_topic = table[r_idx+2]
@@ -432,20 +457,17 @@ def process_tables(tables, doc_title):
                             subj_text = r_subj[mc] if mc < len(r_subj) else ""
                             unit_text = r_unit[mc] if mc < len(r_unit) else ""
                             topic_text = r_topic[mc] if mc < len(r_topic) else ""
-                            # Page row might have 2 cells per day (front cell is textbook page)
-                            if len(r_page) >= 10:
-                                page_text = r_page[d_idx * 2] if d_idx * 2 < len(r_page) else ""
-                            elif mc < len(r_page):
-                                page_text = r_page[mc]
+                            # In 4-row layout: mc is always the front cell (the actual textbook page)!
+                            page_text = r_page[mc] if mc < len(r_page) else ""
                         else:
-                            c = d_idx + 1
-                            subj_text = r_subj[c] if c < len(r_subj) else ""
-                            unit_text = r_unit[d_idx] if d_idx < len(r_unit) else (r_unit[c] if c < len(r_unit) else "")
-                            topic_text = r_topic[d_idx] if d_idx < len(r_topic) else (r_topic[c] if c < len(r_topic) else "")
-                            if len(r_page) >= 10:
-                                page_text = r_page[d_idx * 2] if d_idx * 2 < len(r_page) else ""
+                            if len(table[r_idx]) >= 11:
+                                c = 1 + d_idx * 2
                             else:
-                                page_text = r_page[d_idx] if d_idx < len(r_page) else ""
+                                c = 1 + d_idx
+                            subj_text = r_subj[c] if c < len(r_subj) else ""
+                            unit_text = r_unit[c] if c < len(r_unit) else ""
+                            topic_text = r_topic[c] if c < len(r_topic) else ""
+                            page_text = r_page[c] if c < len(r_page) else ""
 
                         subject = identify_subject(subj_text)
                         page_str, sp, ep = extract_page_info(page_text)
@@ -454,6 +476,7 @@ def process_tables(tables, doc_title):
                         clean_topic = topic_text if topic_text else unit_text
                         if not clean_topic:
                             clean_topic = subject
+                        clean_topic = re.sub(r'\s*\(\s*/\s*\)\s*$', '', clean_topic).strip()
 
                         if not subject and (topic_text or unit_text or page_str):
                             subject = "창의적체험활동" if ("활동" in clean_topic or "교육" in clean_topic) else "활동"
@@ -502,7 +525,7 @@ def process_tables(tables, doc_title):
                             topic = lines[-1] if len(lines) > 1 else lines[0]
 
                         if subject or page_str or topic:
-                            mbid = match_book_id(subject, available_books)
+                            mbid = match_book_id(subject, available_books, unit=cell_text)
                             item = {
                                 "period": current_period,
                                 "subject": subject if subject else "학습",
@@ -921,9 +944,11 @@ def parse_hwpml(filepath):
 
                 is_4row = True
                 for next_r in [unit_cells, topic_cells, page_cells]:
-                    if next_r and re.search(r'([1-8])\s*교시', next_r[0]):
-                        is_4row = False
-                        break
+                    if next_r:
+                        m_np = re.search(r'([1-8])\s*교시', next_r[0])
+                        if m_np and int(m_np.group(1)) != period_num:
+                            is_4row = False
+                            break
 
                 if is_4row and (unit_cells or topic_cells or page_cells):
                     for d_idx, day in enumerate(DAY_NAMES):

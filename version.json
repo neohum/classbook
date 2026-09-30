@@ -1,9 +1,9 @@
 {
-  "version": "1.2.13",
+  "version": "1.2.14",
   "releaseDate": "2026-09-30",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.13/classbook-setup-v1.2.13.exe",
-  "installerName": "classbook-setup-v1.2.13.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.13.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T024356Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d83b0b0a9d2b387bf296cf9475211ad219442f56f3014561c18b8fbca7f7e62c",
-  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.13.exe",
-  "notes": "수업 시작 시간 대형 알림(교과서 쪽수·주제 강조 및 수동 닫기) 적용, 상단 플로팅 교시 바 제거 (v1.2.13)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.14/classbook-setup-v1.2.14.exe",
+  "installerName": "classbook-setup-v1.2.14.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.14.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T030305Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f49796a01b17ac9b9c90a9a7d31f5275228c600adc00994abc9868839a676a8c",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.14.exe",
+  "notes": "주간학습안내 4행 교시 구조(교과·단원·주제·쪽수) 인식 개선 및 교시 중복 방지 (v1.2.14)"
 }
