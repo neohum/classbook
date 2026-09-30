@@ -24,7 +24,7 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.15"
+const AppVersion = "1.2.16"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -53,6 +53,30 @@ type App struct {
 	currentPlan     *WeeklyPlanResult
 }
 
+// getAppDir returns the directory of the running executable or working directory
+func getAppDir() string {
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		if _, err := os.Stat(filepath.Join(exeDir, "settings.json")); err == nil {
+			return exeDir
+		}
+		if _, err := os.Stat(filepath.Join(exeDir, "latest_weekly_plan.json")); err == nil {
+			return exeDir
+		}
+		if _, err := os.Stat(filepath.Join(exeDir, "book")); err == nil {
+			return exeDir
+		}
+		if strings.Contains(strings.ToLower(exeDir), "classbook") {
+			return exeDir
+		}
+	}
+	cwd, err := os.Getwd()
+	if err == nil {
+		return cwd
+	}
+	return "."
+}
+
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
@@ -65,16 +89,14 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// Load settings
-	cwd, err := os.Getwd()
-	if err == nil {
-		a.settingsPath = filepath.Join(cwd, "settings.json")
-		a.loadSettings()
-	}
+	// Load settings from application directory
+	appDir := getAppDir()
+	a.settingsPath = filepath.Join(appDir, "settings.json")
+	a.loadSettings()
 
 	// Check and set default watch folder if empty
 	if a.settings.PlanWatchFolder == "" {
-		defaultFolder := filepath.Join(cwd, "weekly_plans")
+		defaultFolder := filepath.Join(appDir, "weekly_plans")
 		os.MkdirAll(defaultFolder, 0755)
 		a.settings.PlanWatchFolder = defaultFolder
 		a.saveSettings()
@@ -699,14 +721,20 @@ func (a *App) GetLatestWeeklyPlan() (*WeeklyPlanResult, error) {
 // GetWeeklyPlanRawBase64 reads the latest weekly plan file and returns its base64 content
 func (a *App) GetWeeklyPlanRawBase64(customPath string) (string, error) {
 	targetPath := customPath
-	if targetPath == "" && a.currentPlan != nil {
+	if targetPath == "" && a.currentPlan != nil && a.currentPlan.FilePath != "" {
 		targetPath = a.currentPlan.FilePath
 	}
 	if targetPath == "" {
 		targetPath = a.settings.LastPlanFile
 	}
+	// Verify if targetPath actually exists on disk
+	if targetPath != "" {
+		if _, err := os.Stat(targetPath); err != nil {
+			targetPath = ""
+		}
+	}
 	if targetPath == "" {
-		// Fallback to watch folder latest file
+		// Fallback 1: Watch folder latest file
 		watchFolder := a.settings.PlanWatchFolder
 		if watchFolder != "" {
 			entries, err := os.ReadDir(watchFolder)
@@ -734,7 +762,32 @@ func (a *App) GetWeeklyPlanRawBase64(customPath string) (string, error) {
 	}
 
 	if targetPath == "" {
-		return "", fmt.Errorf("주학습계획안 파일이 지정되지 않았습니다")
+		// Fallback 2: Known common cloud/backup directory
+		fallbackDir := `N:\개인\daumcloud\2026년\05 주학습계획안`
+		if entries, err := os.ReadDir(fallbackDir); err == nil {
+			var latestFile string
+			var latestMod time.Time
+			for _, e := range entries {
+				if !e.IsDir() {
+					ext := strings.ToLower(filepath.Ext(e.Name()))
+					if ext == ".hwp" || ext == ".hwpx" {
+						if info, err := e.Info(); err == nil {
+							if info.ModTime().After(latestMod) {
+								latestMod = info.ModTime()
+								latestFile = filepath.Join(fallbackDir, e.Name())
+							}
+						}
+					}
+				}
+			}
+			if latestFile != "" {
+				targetPath = latestFile
+			}
+		}
+	}
+
+	if targetPath == "" {
+		return "", fmt.Errorf("주학습계획안 파일(HWP/HWPX)을 찾을 수 없습니다. 파일을 등록해주세요")
 	}
 
 	if _, err := os.Stat(targetPath); err != nil {
@@ -746,6 +799,15 @@ func (a *App) GetWeeklyPlanRawBase64(customPath string) (string, error) {
 		return "", fmt.Errorf("파일 읽기 실패: %v", err)
 	}
 
+	// Update cached file path in memory & settings
+	if a.currentPlan != nil && a.currentPlan.FilePath == "" {
+		a.currentPlan.FilePath = targetPath
+	}
+	if a.settings.LastPlanFile == "" {
+		a.settings.LastPlanFile = targetPath
+		a.saveSettings()
+	}
+
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
@@ -753,14 +815,17 @@ func (a *App) saveCurrentPlan() {
 	if a.currentPlan == nil {
 		return
 	}
-	cwd, err := os.Getwd()
+	data, err := json.MarshalIndent(a.currentPlan, "", "  ")
 	if err != nil {
 		return
 	}
-	cacheFile := filepath.Join(cwd, "latest_weekly_plan.json")
-	data, err := json.MarshalIndent(a.currentPlan, "", "  ")
-	if err == nil {
-		_ = os.WriteFile(cacheFile, data, 0644)
+
+	appDir := getAppDir()
+	_ = os.WriteFile(filepath.Join(appDir, "latest_weekly_plan.json"), data, 0644)
+
+	cwd, errCwd := os.Getwd()
+	if errCwd == nil && cwd != appDir {
+		_ = os.WriteFile(filepath.Join(cwd, "latest_weekly_plan.json"), data, 0644)
 	}
 }
 
@@ -776,12 +841,16 @@ func (a *App) SaveWeeklyPlan(plan *WeeklyPlanResult) error {
 }
 
 func (a *App) loadLatestPlan() (*WeeklyPlanResult, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	cacheFile := filepath.Join(cwd, "latest_weekly_plan.json")
+	appDir := getAppDir()
+	cacheFile := filepath.Join(appDir, "latest_weekly_plan.json")
 	data, err := os.ReadFile(cacheFile)
+	if err != nil {
+		cwd, errCwd := os.Getwd()
+		if errCwd == nil {
+			cacheFile = filepath.Join(cwd, "latest_weekly_plan.json")
+			data, err = os.ReadFile(cacheFile)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -1,9 +1,9 @@
 {
-  "version": "1.2.15",
+  "version": "1.2.16",
   "releaseDate": "2026-09-30",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.15/classbook-setup-v1.2.15.exe",
-  "installerName": "classbook-setup-v1.2.15.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.15.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T031457Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=76ab9164b8c7e5f779430d62160e6d625a0a9a9127266e805dc9f8b0935f4cc5",
-  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.15.exe",
-  "notes": "주간학습안내 교시별 1칸 보장(다중 항목 단일 교시 병합) 및 임베디드 스크립트 실행 보장 (v1.2.15)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.16/classbook-setup-v1.2.16.exe",
+  "installerName": "classbook-setup-v1.2.16.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.16.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T035052Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e444ede1734993bbac540100270982afb99d7fe318b4a520bebd57609c26c5c6",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.16.exe",
+  "notes": "주안 원본 미리보기(SVG iframe 격리 렌더링) 흰 화면 해결, 주간 시간표 전체 그리드 뷰 및 에러 바운더리 적용 (v1.2.16)"
 }

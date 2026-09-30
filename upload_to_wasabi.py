@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "주간학습안내 교시별 1칸 보장(다중 항목 단일 교시 병합) 및 임베디드 스크립트 실행 보장 (v1.2.15)"
+    notes = "주안 원본 미리보기(SVG iframe 격리 렌더링) 흰 화면 해결, 주간 시간표 전체 그리드 뷰 및 에러 바운더리 적용 (v1.2.16)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

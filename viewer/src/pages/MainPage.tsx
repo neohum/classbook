@@ -21,6 +21,7 @@ import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal from '../components/WeeklyPlanScheduleModal';
 import ScheduleConfigModal, { getStoredSchedule, type ScheduleItem } from '../components/ScheduleConfigModal';
 import { resolveBookForSubject } from '../utils/bookResolver';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 // Configure PDF.js worker using Vite's ?url literal for local bundling
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
@@ -197,7 +198,17 @@ export default function MainPage() {
                 const folder = await GetWatchFolder();
                 if (folder) setWatchFolder(folder);
 
-                const plan = await GetLatestWeeklyPlan();
+                let plan = await GetLatestWeeklyPlan();
+                if (!plan || !plan.success) {
+                    try {
+                        const local = localStorage.getItem('classbook_weekly_plan_db');
+                        if (local) {
+                            const parsed = JSON.parse(local);
+                            if (parsed && parsed.schedule) plan = parsed;
+                        }
+                    } catch (e) {}
+                }
+
                 if (plan && plan.success) {
                     setCurrentPlan(plan);
 
@@ -566,9 +577,10 @@ export default function MainPage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8 font-sans pb-32">
-            {/* Header with Title and Control Buttons */}
-            <header data-wails-drag className="max-w-6xl mx-auto mb-10 mt-4">
+        <ErrorBoundary fallbackTitle="메인 화면을 불러오는 중 오류가 발생했습니다">
+            <div className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8 font-sans pb-32">
+                {/* Header with Title and Control Buttons */}
+                <header data-wails-drag className="max-w-6xl mx-auto mb-10 mt-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                     <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="flex items-center gap-3">
                         <div className="p-3 bg-violet-600 text-white rounded-2xl shadow-lg shadow-violet-500/30">
@@ -865,5 +877,6 @@ export default function MainPage() {
                 </button>
             </div>
         </div>
+        </ErrorBoundary>
     );
 }

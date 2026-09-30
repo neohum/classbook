@@ -7,6 +7,8 @@ import { DownloadAndInstallUpdate } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
 import { Loader2 } from 'lucide-react';
 
+import ErrorBoundary from './components/ErrorBoundary';
+
 function App() {
   const [updateStatus, setUpdateStatus] = useState<main.UpdateStatus | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -25,10 +27,12 @@ function App() {
 
   return (
     <>
-      <Routes>
-        <Route path="/" element={<MainPage />} />
-        <Route path="/viewer/:bookId" element={<ViewerPage />} />
-      </Routes>
+      <ErrorBoundary title="화면 오류">
+        <Routes>
+          <Route path="/" element={<MainPage />} />
+          <Route path="/viewer/:bookId" element={<ViewerPage />} />
+        </Routes>
+      </ErrorBoundary>
 
       {/* 무인 자동 업데이트 진행 오버레이 */}
       {updateStatus && (
