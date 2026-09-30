@@ -52,24 +52,38 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 	// If the request starts with "book/", serve it from the local filesystem
 	if strings.HasPrefix(requestedFilename, "book/") {
-		cwd, err := os.Getwd()
-		if err != nil {
-			res.WriteHeader(http.StatusInternalServerError)
-			res.Write([]byte(err.Error()))
-			return
-		}
-
-		filePath := filepath.Join(cwd, requestedFilename)
+		appDir := getAppDir()
+		filePath := filepath.Join(appDir, requestedFilename)
 
 		// Clean the path to prevent directory traversal attacks
 		filePath = filepath.Clean(filePath)
-		if !strings.HasPrefix(filePath, filepath.Join(cwd, "book")) {
-			res.WriteHeader(http.StatusForbidden)
-			res.Write([]byte("Access Denied"))
-			return
+		if !strings.HasPrefix(filePath, filepath.Join(appDir, "book")) {
+			// Check cwd if different
+			cwd, errCwd := os.Getwd()
+			if errCwd == nil && cwd != appDir {
+				altPath := filepath.Clean(filepath.Join(cwd, requestedFilename))
+				if strings.HasPrefix(altPath, filepath.Join(cwd, "book")) {
+					filePath = altPath
+				}
+			}
 		}
 
 		fileData, err := os.ReadFile(filePath)
+		if err != nil {
+			// Fallback to cwd if file not found in appDir
+			cwd, errCwd := os.Getwd()
+			if errCwd == nil && cwd != appDir {
+				altPath := filepath.Clean(filepath.Join(cwd, requestedFilename))
+				if strings.HasPrefix(altPath, filepath.Join(cwd, "book")) {
+					if altData, errAlt := os.ReadFile(altPath); errAlt == nil {
+						fileData = altData
+						filePath = altPath
+						err = nil
+					}
+				}
+			}
+		}
+
 		if err != nil {
 			res.WriteHeader(http.StatusNotFound)
 			res.Write([]byte(err.Error()))

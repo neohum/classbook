@@ -24,7 +24,7 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.16"
+const AppVersion = "1.2.17"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -55,26 +55,47 @@ type App struct {
 
 // getAppDir returns the directory of the running executable or working directory
 func getAppDir() string {
+	cwd, errCwd := os.Getwd()
+	if errCwd == nil {
+		if _, err := os.Stat(filepath.Join(cwd, "book")); err == nil {
+			return cwd
+		}
+	}
 	if exe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exe)
+		if _, err := os.Stat(filepath.Join(exeDir, "book")); err == nil {
+			return exeDir
+		}
 		if _, err := os.Stat(filepath.Join(exeDir, "settings.json")); err == nil {
 			return exeDir
 		}
 		if _, err := os.Stat(filepath.Join(exeDir, "latest_weekly_plan.json")); err == nil {
 			return exeDir
 		}
-		if _, err := os.Stat(filepath.Join(exeDir, "book")); err == nil {
-			return exeDir
-		}
 		if strings.Contains(strings.ToLower(exeDir), "classbook") {
 			return exeDir
 		}
 	}
-	cwd, err := os.Getwd()
-	if err == nil {
+	if errCwd == nil {
 		return cwd
 	}
 	return "."
+}
+
+// getImagesDir returns the book/images directory reliably
+func getImagesDir() string {
+	appDir := getAppDir()
+	imagesDir := filepath.Join(appDir, "book", "images")
+	if _, err := os.Stat(imagesDir); err == nil {
+		return imagesDir
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		alt := filepath.Join(cwd, "book", "images")
+		if _, errAlt := os.Stat(alt); errAlt == nil {
+			return alt
+		}
+	}
+	return imagesDir
 }
 
 // NewApp creates a new App application struct
@@ -340,13 +361,18 @@ var colors = []string{"bg-orange-500", "bg-orange-400", "bg-blue-500", "bg-blue-
 
 // GetTextbooks scans the book/images directory and returns available textbooks with their metadata
 func (a *App) GetTextbooks() ([]Textbook, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-
-	imagesDir := filepath.Join(cwd, "book", "images")
+	imagesDir := getImagesDir()
 	entries, err := os.ReadDir(imagesDir)
+	if err != nil {
+		if cwd, errCwd := os.Getwd(); errCwd == nil {
+			altImages := filepath.Join(cwd, "book", "images")
+			if altEntries, errAlt := os.ReadDir(altImages); errAlt == nil {
+				imagesDir = altImages
+				entries = altEntries
+				err = nil
+			}
+		}
+	}
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []Textbook{}, nil
@@ -429,11 +455,8 @@ func (a *App) EnsureBookDir(title string, numPages int) error {
 
 // EnsureBookDirWithOffset creates the book directory and writes metadata with pageOffset
 func (a *App) EnsureBookDirWithOffset(title string, numPages int, pageOffset int) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	bookDir := filepath.Join(cwd, "book", "images", title)
+	imagesDir := getImagesDir()
+	bookDir := filepath.Join(imagesDir, title)
 	if err := os.MkdirAll(bookDir, 0755); err != nil {
 		return err
 	}
@@ -448,11 +471,8 @@ func (a *App) EnsureBookDirWithOffset(title string, numPages int, pageOffset int
 
 // UpdateBookOffset updates only the pageOffset in the metadata.json of the book
 func (a *App) UpdateBookOffset(title string, pageOffset int) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	metaPath := filepath.Join(cwd, "book", "images", title, "metadata.json")
+	imagesDir := getImagesDir()
+	metaPath := filepath.Join(imagesDir, title, "metadata.json")
 	var meta Metadata
 	if data, err := os.ReadFile(metaPath); err == nil {
 		_ = json.Unmarshal(data, &meta)
@@ -468,11 +488,8 @@ func (a *App) UpdateBookOffset(title string, pageOffset int) error {
 
 // GetBookMetadata reads metadata for a specific textbook
 func (a *App) GetBookMetadata(title string) (*Metadata, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	metaPath := filepath.Join(cwd, "book", "images", title, "metadata.json")
+	imagesDir := getImagesDir()
+	metaPath := filepath.Join(imagesDir, title, "metadata.json")
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		return nil, err
@@ -486,11 +503,9 @@ func (a *App) GetBookMetadata(title string) (*Metadata, error) {
 
 // SavePageImage saves a base64 encoded jpeg into the book's image directory
 func (a *App) SavePageImage(title string, pageNum int, base64Data string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	bookDir := filepath.Join(cwd, "book", "images", title)
+	imagesDir := getImagesDir()
+	bookDir := filepath.Join(imagesDir, title)
+	_ = os.MkdirAll(bookDir, 0755)
 
 	idx := strings.Index(base64Data, ";base64,")
 	if idx != -1 {
@@ -508,13 +523,10 @@ func (a *App) SavePageImage(title string, pageNum int, base64Data string) error 
 
 // DeleteBook removes a book directory completely from disk
 func (a *App) DeleteBook(title string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	bookDir := filepath.Join(cwd, "book", "images", title)
+	imagesDir := getImagesDir()
+	bookDir := filepath.Join(imagesDir, title)
 
-	if !strings.HasPrefix(bookDir, filepath.Join(cwd, "book", "images")) {
+	if !strings.HasPrefix(bookDir, imagesDir) {
 		return fmt.Errorf("invalid book directory")
 	}
 
@@ -627,6 +639,7 @@ func (a *App) ParseWeeklyPlanFile(filePath string) (*WeeklyPlanResult, error) {
 
 	args := append(baseArgs, scriptPath, filePath)
 	cmd := exec.Command(chosenCmd, args...)
+	cmd.Dir = getAppDir()
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
 	var outBuf bytes.Buffer

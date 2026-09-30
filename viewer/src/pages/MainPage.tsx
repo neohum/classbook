@@ -502,14 +502,18 @@ export default function MainPage() {
 
     // Quick navigation from weekly plan to book page
     const handleGoToBook = (bookId: string, pageNumber: number, item?: any) => {
-        const resolved = resolveBookForSubject(bookId, bookId, textbooks);
-        const targetId = resolved ? resolved.id : bookId;
-        const bookName = resolved ? resolved.title : bookId;
-        showToast(`[${bookName} ${pageNumber}쪽]으로 이동합니다.`);
-        const topicQ = item?.topic ? `&topic=${encodeURIComponent(item.topic)}` : '';
-        const subjQ = item?.subject ? `&subject=${encodeURIComponent(item.subject)}` : '';
-        const periodQ = item?.period ? `&period=${encodeURIComponent(`${item.period}교시`)}` : '';
-        navigate(`/viewer/${encodeURIComponent(targetId)}?targetPage=${pageNumber}${topicQ}${subjQ}${periodQ}`);
+        const resolved = resolveBookForSubject(item?.subject || bookId, item?.matchedBookId || bookId, textbooks);
+        if (resolved) {
+            const targetId = resolved.id;
+            const bookName = resolved.title;
+            showToast(`[${bookName} ${pageNumber}쪽]으로 이동합니다.`);
+            const topicQ = item?.topic ? `&topic=${encodeURIComponent(item.topic)}` : '';
+            const subjQ = item?.subject ? `&subject=${encodeURIComponent(item.subject)}` : '';
+            const periodQ = item?.period ? `&period=${encodeURIComponent(`${item.period}교시`)}` : '';
+            navigate(`/viewer/${encodeURIComponent(targetId)}?targetPage=${pageNumber}${topicQ}${subjQ}${periodQ}`);
+        } else {
+            handleGoToBlank(item?.subject || bookId, item?.topic || '', item?.period);
+        }
     };
 
     const handleGoToBlank = (subject: string, topic: string, period?: number) => {

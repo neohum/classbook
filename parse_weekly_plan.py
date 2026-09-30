@@ -169,10 +169,15 @@ def match_book_id(subject, available_books, unit=""):
             return '하루'
 
     # 3. Exact match or starts with in available_books
+    primary_matches = []
     for b in available_books:
         bid = b.get('id', '')
         if subject == bid or bid.startswith(subject):
-            return bid
+            if '활동' not in subject and '익힘' not in subject and ('활동' in bid or '익힘' in bid):
+                continue
+            primary_matches.append(bid)
+    if primary_matches:
+        return primary_matches[0]
     
     # 4. Check aliases in SUBJECT_MAP
     aliases = SUBJECT_MAP.get(subject, [])
@@ -180,24 +185,39 @@ def match_book_id(subject, available_books, unit=""):
         for b in available_books:
             bid = b.get('id', '')
             if al == bid or bid.startswith(al):
+                if '활동' not in subject and '익힘' not in subject and ('활동' in bid or '익힘' in bid):
+                    continue
                 return bid
 
     # 5. Final fallback for integrated
     if is_integrated:
+        for b in available_books:
+            bid = b.get('id', '')
+            if '하루' in bid:
+                return bid
         return '하루'
                 
     return ""
 
 def get_available_books(cwd=None):
-    if cwd is None:
-        cwd = os.getcwd()
-    images_dir = os.path.join(cwd, "book", "images")
-    books = []
-    if os.path.exists(images_dir):
-        for name in os.listdir(images_dir):
-            if os.path.isdir(os.path.join(images_dir, name)):
-                books.append({"id": name, "title": name})
-    return books
+    candidates = []
+    if cwd:
+        candidates.append(cwd)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(script_dir)
+    candidates.append(os.getcwd())
+    candidates.append(r"C:\Program Files\neohum\Classbook")
+
+    for c in candidates:
+        images_dir = os.path.join(c, "book", "images")
+        if os.path.exists(images_dir):
+            books = []
+            for name in os.listdir(images_dir):
+                if os.path.isdir(os.path.join(images_dir, name)):
+                    books.append({"id": name, "title": name})
+            if books:
+                return books
+    return []
 
 def parse_hwpx(filepath):
     """Parse HWPX XML content to extract weekly schedule table"""

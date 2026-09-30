@@ -21,10 +21,29 @@ export function resolveBookForSubject(
             return bClean === cleanPref || norm(bClean) === normPref || norm(b.title) === normPref;
         });
         if (exact) return exact;
+
+        // 1-1. Substring / base-stem match for preferredBookId
+        // e.g. "하루" -> matches "하루1-2", "국어1-1가" -> matches "국어1-2가", "수학1-1" -> matches "수학1-2"
+        const basePref = normPref.replace(/[0-9]+(-[0-9]+)?/g, '').replace(/[가나]/g, '');
+        if (basePref.length >= 2) {
+            const baseMatches = availableBooks.filter(b => {
+                const bNorm = norm(b.id.replace(/\.pdf$/i, ''));
+                const tNorm = norm(b.title.replace(/\.pdf$/i, ''));
+                return bNorm.includes(basePref) || tNorm.includes(basePref);
+            });
+            if (baseMatches.length > 0) {
+                // If base is "국어" or "수학", prioritize non-활동 / non-익힘 unless specified
+                if (!normPref.includes("활동") && !normPref.includes("익힘")) {
+                    const primary = baseMatches.find(b => !b.title.includes("활동") && !b.title.includes("익힘") && !b.id.includes("활동") && !b.id.includes("익힘"));
+                    if (primary) return primary;
+                }
+                return baseMatches[0];
+            }
+        }
     }
 
-    if (!subject) return null;
-    const cleanSubject = subject.trim();
+    const cleanSubject = (subject || preferredBookId || '').trim();
+    if (!cleanSubject) return null;
     const normSubject = norm(cleanSubject);
 
     // 2. Direct string inclusion (normalized)
@@ -59,9 +78,9 @@ export function resolveBookForSubject(
         '슬생': ['하루', '슬기로운생활', '사람들', '여름', '가을'],
         '즐생': ['하루', '즐거운생활', '탐험', '가을', '겨울'],
         '봄': ['봄', '학교', '바른생활', '하루'],
-        '여름': ['여름', '사람들', '슬기로운생활'],
-        '가을': ['가을', '탐험', '즐거운생활'],
-        '겨울': ['겨울', '탐험'],
+        '여름': ['여름', '사람들', '슬기로운생활', '하루'],
+        '가을': ['가을', '탐험', '즐거운생활', '하루'],
+        '겨울': ['겨울', '탐험', '하루'],
         '학교': ['학교', '봄', '바른생활', '하루'],
         '사람들': ['사람들', '여름', '슬기로운생활', '하루'],
         '탐험': ['탐험', '가을', '즐거운생활', '하루'],

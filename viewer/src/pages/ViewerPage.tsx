@@ -1128,17 +1128,33 @@ export default function ViewerPage() {
             try {
                 // Fetch the generated metadata file to know how many pages exist
                 const response = await fetch(`/book/images/${bookId}/metadata.json`);
-                if (!response.ok) throw new Error("Metadata not found");
+                if (!response.ok) {
+                    // Try fallback book resolution if bookId was an alias like '하루', '국어', '수학'
+                    const books = (await GetTextbooks()) || [];
+                    const fallbackResolved = resolveBookForSubject(bookId, bookId, books);
+                    if (fallbackResolved && fallbackResolved.id !== bookId) {
+                        const targetPageParam = searchParams.get('targetPage');
+                        const query = targetPageParam ? `?targetPage=${targetPageParam}` : '';
+                        navigate(`/viewer/${encodeURIComponent(fallbackResolved.id)}${query}`, { replace: true });
+                        return;
+                    }
+                    throw new Error("Metadata not found");
+                }
                 const data = await response.json();
 
                 setNumPages(data.numPages);
 
-                let effectiveOffset = pageOffset;
+                let effectiveOffset = 0;
                 if (data.pageOffset !== undefined && data.pageOffset !== null) {
                     effectiveOffset = data.pageOffset;
-                    setPageOffset(data.pageOffset);
-                    localStorage.setItem(`pageOffset_${bookId}`, data.pageOffset.toString());
+                } else {
+                    const saved = localStorage.getItem(`pageOffset_${bookId}`);
+                    if (saved !== null) {
+                        effectiveOffset = parseInt(saved, 10) || 0;
+                    }
                 }
+                setPageOffset(effectiveOffset);
+                localStorage.setItem(`pageOffset_${bookId}`, effectiveOffset.toString());
 
                 // Check URL param ?targetPage=X
                 const targetPageParam = searchParams.get('targetPage');
@@ -1185,17 +1201,74 @@ export default function ViewerPage() {
         setCurrentPage(prev => Math.max(1, prev - 1));
     };
 
-    const handleGoToWeeklyBook = (targetBookId: string, targetPrintedPage: number) => {
+    const handleGoToWeeklyBook = async (targetBookId: string, targetPrintedPage: number, itm?: any) => {
         stopAllAudio();
         setAlertData(prev => ({ ...prev, isOpen: false }));
         setIsWeeklyPlanModalOpen(false);
 
-        if (targetBookId === bookId || !targetBookId) {
-            const physical = Math.min(Math.max(1, targetPrintedPage + pageOffset), numPages);
-            setCurrentPage(physical);
-            setInputPage(targetPrintedPage.toString());
+        // 1. Fetch available textbooks
+        let currentBooks: main.Textbook[] = [];
+        try {
+            currentBooks = (await GetTextbooks()) || [];
+        } catch (e) {
+            console.error("GetTextbooks error in handleGoToWeeklyBook:", e);
+        }
+
+        // 2. Resolve target book against available textbooks
+        const resolved = resolveBookForSubject(
+            itm?.subject || targetBookId,
+            itm?.matchedBookId || targetBookId,
+            currentBooks
+        );
+
+        const pageToOpen = targetPrintedPage > 0 ? targetPrintedPage : 1;
+
+        if (resolved) {
+            const realBookId = resolved.id;
+            if (itm) {
+                setActiveLesson({
+                    periodName: itm.period ? `${itm.period}교시` : "수업",
+                    subject: itm.subject || resolved.title,
+                    pageStr: itm.pageStr || `${pageToOpen}쪽`,
+                    startPage: pageToOpen,
+                    topic: itm.topic || '',
+                    matchedBookId: realBookId
+                });
+            }
+
+            if (realBookId === bookId) {
+                // 이미 해당 교과서를 보고 있는 경우: 즉시 해당 페이지로 이동
+                const physical = Math.min(Math.max(1, pageToOpen + pageOffset), numPages);
+                setCurrentPage(physical);
+                setInputPage(pageToOpen.toString());
+                showToast(`[${resolved.title} ${pageToOpen}쪽]으로 이동했습니다.`);
+            } else {
+                // 다른 교과서로 전환
+                showToast(`[${resolved.title} ${pageToOpen}쪽]으로 전환합니다.`);
+                const topicQ = itm?.topic ? `&topic=${encodeURIComponent(itm.topic)}` : '';
+                const subjQ = itm?.subject ? `&subject=${encodeURIComponent(itm.subject)}` : '';
+                const periodQ = itm?.period ? `&period=${encodeURIComponent(`${itm.period}교시`)}` : '';
+                navigate(`/viewer/${encodeURIComponent(realBookId)}?targetPage=${pageToOpen}${topicQ}${subjQ}${periodQ}`);
+            }
         } else {
-            navigate(`/viewer/${encodeURIComponent(targetBookId)}?targetPage=${targetPrintedPage}`);
+            // 등록된 교과서가 없는 과목(창체, 자율활동, 전담 등): 빈 화면 모드로 표시
+            const subjectName = itm?.subject || targetBookId || "수업";
+            const topicName = itm?.topic || "";
+            const periodStr = itm?.period ? `${itm.period}교시` : "활동 수업";
+            setActiveLesson({
+                periodName: periodStr,
+                subject: subjectName,
+                pageStr: itm?.pageStr || "",
+                startPage: 0,
+                topic: topicName,
+                matchedBookId: "blank"
+            });
+            if (bookId === 'blank') {
+                showToast(`[${subjectName}] 일치하는 교과서가 없어 빈 화면에 내용을 표시합니다.`);
+            } else {
+                showToast(`[${subjectName}] 일치하는 교과서가 없어 빈 화면 모드로 전환합니다.`);
+                navigate(`/viewer/blank?subject=${encodeURIComponent(subjectName)}&topic=${encodeURIComponent(topicName)}&period=${encodeURIComponent(periodStr)}`);
+            }
         }
     };
 
@@ -1721,7 +1794,7 @@ export default function ViewerPage() {
                             matchedBookId: targetBookId
                         });
                     }
-                    handleGoToWeeklyBook(targetBookId, targetPage);
+                    handleGoToWeeklyBook(targetBookId, targetPage, itm);
                 }}
                 onGoToBlank={(subject, topic, period) => {
                     setActiveLesson({

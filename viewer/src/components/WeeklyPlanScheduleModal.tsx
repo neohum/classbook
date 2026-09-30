@@ -14,6 +14,7 @@ import {
 } from '../../wailsjs/go/main/App';
 import HwpHtmlViewerModal from './HwpHtmlViewerModal';
 import ErrorBoundary from './ErrorBoundary';
+import { resolveBookForSubject } from '../utils/bookResolver';
 
 interface Props {
     isOpen: boolean;
@@ -361,7 +362,19 @@ function WeeklyPlanScheduleModalContent({
                     onGoToBlank(newItem.subject, newItem.topic, newItem.period);
                 }
             } else {
-                onGoToBook(newItem.matchedBookId || newItem.subject, newItem.startPage || 1, newItem);
+                let books = availableBooks;
+                if (!books || books.length === 0) {
+                    try {
+                        books = (await GetTextbooks()) || [];
+                    } catch (e) { }
+                }
+                const resolved = resolveBookForSubject(newItem.subject, newItem.matchedBookId, books);
+                const targetBookId = resolved ? resolved.id : (newItem.matchedBookId || newItem.subject);
+                if (resolved || !onGoToBlank) {
+                    onGoToBook(targetBookId, newItem.startPage || 1, newItem);
+                } else {
+                    onGoToBlank(newItem.subject, newItem.topic, newItem.period);
+                }
             }
         }
     };
@@ -375,17 +388,39 @@ function WeeklyPlanScheduleModalContent({
         }
     };
 
-    const handleOpenItem = (item: main.WeeklyPlanItem) => {
+    const handleOpenItem = async (item: main.WeeklyPlanItem) => {
         const isBlank = item.matchedBookId === 'blank' || (!item.matchedBookId && !item.startPage && !item.pageStr);
         onClose();
         if (isBlank) {
             if (onGoToBlank) {
                 onGoToBlank(item.subject, item.topic, item.period);
             }
-        } else {
-            const targetPage = item.startPage || 1;
-            const targetBookId = item.matchedBookId || item.subject;
+            return;
+        }
+
+        let books = availableBooks;
+        if (!books || books.length === 0) {
+            try {
+                books = (await GetTextbooks()) || [];
+                if (books && books.length > 0) setAvailableBooks(books);
+            } catch (e) {
+                console.error("Failed to load textbooks in handleOpenItem:", e);
+            }
+        }
+
+        const targetPage = item.startPage || 1;
+        const resolved = resolveBookForSubject(item.subject, item.matchedBookId, books);
+        const targetBookId = resolved ? resolved.id : (item.matchedBookId || item.subject);
+
+        if (resolved) {
             onGoToBook(targetBookId, targetPage, item);
+        } else {
+            // 일치하는 전자 교과서가 없는 경우 (창체, 자율활동, 전담 교과 등) 빈화면 모드로 표시
+            if (onGoToBlank) {
+                onGoToBlank(item.subject, item.topic, item.period);
+            } else {
+                onGoToBook(targetBookId, targetPage, item);
+            }
         }
     };
 
