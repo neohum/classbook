@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { BookOpen, X, ArrowRight, Clock, Sparkles, Bell, Coffee } from 'lucide-react';
+import React from 'react';
+import { BookOpen, X, ArrowRight, Clock, Sparkles, Coffee, Check } from 'lucide-react';
 import { main } from '../../wailsjs/go/models';
 
 interface Props {
@@ -23,32 +23,11 @@ export default function WeeklyPlanAlertModal({
     onClose,
     onGoToBook
 }: Props) {
-    const [timeLeft, setTimeLeft] = useState<number>(3);
-
-    useEffect(() => {
-        if (!isOpen) return;
-
-        setTimeLeft(3);
-
-        const interval = setInterval(() => {
-            setTimeLeft(prev => Math.max(0, prev - 1));
-        }, 1000);
-
-        const timer = setTimeout(() => {
-            onClose();
-        }, 3000);
-
-        return () => {
-            clearTimeout(timer);
-            clearInterval(interval);
-        };
-    }, [isOpen, onClose]);
-
     if (!isOpen) return null;
 
     const targetPage = item?.startPage || 1;
     const targetBookId = item?.matchedBookId || item?.subject;
-    const hasBookTarget = !!targetBookId && !!onGoToBook;
+    const hasBookTarget = !!targetBookId && !!onGoToBook && !isRestTime;
 
     const handleConfirmAndGo = () => {
         onClose();
@@ -58,146 +37,144 @@ export default function WeeklyPlanAlertModal({
     };
 
     return (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className={`bg-gradient-to-b ${isRestTime ? 'from-slate-900 via-slate-800 to-amber-950/40 border-amber-500/70' : 'from-slate-900 via-slate-800 to-violet-950/40 border-violet-500/80'} border-2 rounded-3xl shadow-2xl p-8 max-w-lg w-full mx-4 text-center text-white relative overflow-hidden`}>
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-6 md:p-8 animate-in fade-in duration-200">
+            <div className={`bg-gradient-to-b ${
+                isRestTime 
+                    ? 'from-slate-900 via-slate-800 to-amber-950/50 border-amber-500/70' 
+                    : 'from-slate-900 via-slate-800 to-violet-950/60 border-violet-500/80'
+            } border-2 rounded-3xl sm:rounded-[36px] shadow-2xl p-6 sm:p-10 md:p-12 max-w-4xl w-full mx-auto text-center text-white relative overflow-hidden max-h-[94vh] flex flex-col justify-between`}>
+                
                 {/* Background decorative glow */}
-                <div className={`absolute -top-24 -left-24 w-48 h-48 ${isRestTime ? 'bg-amber-600/30' : 'bg-violet-600/30'} rounded-full blur-3xl pointer-events-none`} />
-                <div className={`absolute -bottom-24 -right-24 w-48 h-48 ${isRestTime ? 'bg-orange-600/30' : 'bg-indigo-600/30'} rounded-full blur-3xl pointer-events-none`} />
+                <div className={`absolute -top-32 -left-32 w-72 h-72 ${isRestTime ? 'bg-amber-600/20' : 'bg-violet-600/25'} rounded-full blur-3xl pointer-events-none`} />
+                <div className={`absolute -bottom-32 -right-32 w-72 h-72 ${isRestTime ? 'bg-orange-600/20' : 'bg-indigo-600/25'} rounded-full blur-3xl pointer-events-none`} />
 
-                {/* Close X */}
+                {/* Close X Button (Top Right) */}
                 <button
                     onClick={onClose}
-                    className="absolute top-5 right-5 p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                    className="absolute top-6 right-6 p-3 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer z-10"
                     title="닫기"
                 >
-                    <X className="w-6 h-6" />
+                    <X className="w-8 h-8" />
                 </button>
 
-                {/* Badge */}
-                <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full ${isRestTime ? 'bg-amber-500/20 border-amber-400/40 text-amber-300' : 'bg-violet-500/20 border-violet-400/40 text-violet-300'} border font-bold text-sm mb-2`}>
-                    {isRestTime ? <Coffee className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-                    <span>
-                        {periodName} {isRestTime ? "쉬는 시간 안내" : "수업 시작 안내"} {periodTime && `(${periodTime})`}
-                    </span>
+                {/* Top Section: Period Badge */}
+                <div className="mb-4">
+                    <div className={`inline-flex items-center gap-2.5 px-5 py-2 rounded-full ${
+                        isRestTime 
+                            ? 'bg-amber-500/20 border-amber-400/50 text-amber-300' 
+                            : 'bg-violet-500/20 border-violet-400/50 text-violet-200'
+                    } border font-black text-base sm:text-lg mb-2 shadow-sm`}>
+                        {isRestTime ? <Coffee className="w-5 h-5 text-amber-400" /> : <Clock className="w-5 h-5 text-violet-400" />}
+                        <span>
+                            {periodName} {isRestTime ? "쉬는 시간" : "수업 시작"} {periodTime && `(${periodTime})`}
+                        </span>
+                    </div>
                 </div>
 
-                {/* Auto Dismiss Countdown Indicator */}
-                <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400 mb-4 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                    <span><strong>{timeLeft}초</strong> 뒤 자동으로 사라집니다</span>
-                </div>
-
-                {/* Animated Icon */}
-                <div className={`w-20 h-20 bg-gradient-to-tr ${isRestTime ? 'from-amber-600 to-orange-500 shadow-amber-500/40' : 'from-violet-600 to-indigo-500 shadow-violet-500/40'} rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-lg animate-bounce`}>
+                {/* Main Content Area */}
+                <div className="my-auto py-2 space-y-5 overflow-y-auto">
                     {isRestTime ? (
-                        <Coffee className="w-10 h-10 text-white" />
-                    ) : item?.subject ? (
-                        <BookOpen className="w-10 h-10 text-white" />
+                        <div className="py-6">
+                            <div className="w-24 h-24 bg-gradient-to-tr from-amber-600 to-orange-500 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-amber-600/30">
+                                <Coffee className="w-12 h-12 text-white" />
+                            </div>
+                            <h3 className="text-4xl sm:text-6xl font-black text-amber-300 mb-4 tracking-tight">
+                                쉬는 시간입니다
+                            </h3>
+                            <p className="text-slate-200 text-xl sm:text-2xl font-bold px-6 py-5 bg-amber-950/40 border border-amber-800/40 rounded-3xl max-w-xl mx-auto leading-relaxed">
+                                {customMessage || "잠시 휴식을 취하고 다음 수업을 준비하세요."}
+                            </p>
+                        </div>
                     ) : (
-                        <Bell className="w-10 h-10 text-white" />
+                        <>
+                            {/* Subject Name Header */}
+                            <div>
+                                <h3 className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight drop-shadow-md flex items-center justify-center gap-3 flex-wrap">
+                                    <span>{item?.subject || `${periodName} 수업`}</span>
+                                    <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-yellow-400 inline animate-pulse" />
+                                </h3>
+                                {customMessage && (
+                                    <p className="text-violet-200 text-base sm:text-lg font-medium mt-2">
+                                        {customMessage}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Learning Topic (학습 주제) - HUGE & CLEAR */}
+                            {item?.topic && (
+                                <div className="bg-slate-800/90 border-2 border-violet-500/50 rounded-3xl p-5 sm:p-7 shadow-xl max-w-3xl mx-auto">
+                                    <div className="text-xs sm:text-sm font-extrabold text-violet-300 tracking-wider uppercase mb-1">
+                                        학습 주제
+                                    </div>
+                                    <div className="text-2xl sm:text-4xl md:text-5xl font-black text-white leading-snug break-keep drop-shadow-sm">
+                                        {item.topic}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Textbook Page (교과서 페이지) - MAXIMUM SIZE & CLARITY */}
+                            {item ? (
+                                <div className="bg-gradient-to-b from-amber-500/15 to-amber-500/5 border-2 border-amber-400/60 rounded-3xl p-6 sm:p-8 shadow-2xl max-w-3xl mx-auto">
+                                    {item.pageStr || (item.startPage && item.startPage > 0) ? (
+                                        <>
+                                            <div className="text-sm sm:text-base font-bold text-amber-300 tracking-widest uppercase mb-1">
+                                                교과서 쪽수
+                                            </div>
+                                            <div className="text-6xl sm:text-8xl md:text-9xl font-black text-amber-300 drop-shadow-[0_8px_25px_rgba(245,158,11,0.4)] tracking-tight leading-none py-2">
+                                                {item.pageStr || `${targetPage}쪽`}
+                                            </div>
+                                            {item.matchedBookId && (
+                                                <div className="text-base sm:text-xl text-slate-200 mt-3 font-bold flex items-center justify-center gap-2">
+                                                    <BookOpen className="w-5 h-5 text-amber-400 shrink-0" />
+                                                    <span>교재: <strong className="text-white underline decoration-amber-400 decoration-2 underline-offset-4">{item.matchedBookId}</strong></span>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="py-2">
+                                            <div className="text-xs sm:text-sm font-bold text-emerald-300 tracking-widest uppercase mb-1">
+                                                수업 안내
+                                            </div>
+                                            <div className="text-3xl sm:text-5xl font-black text-emerald-300 drop-shadow-sm">
+                                                교과서 없는 활동 수업
+                                            </div>
+                                            <div className="text-sm sm:text-base text-slate-300 mt-2 font-medium">
+                                                판서 도구를 이용하거나 자유롭게 활동을 진행하세요
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : null}
+                        </>
                     )}
                 </div>
 
-                {/* Main Heading or Custom Message */}
-                {isRestTime ? (
-                    <div className="mb-6">
-                        <h3 className="text-3xl font-extrabold text-amber-300 mb-3 tracking-tight">
-                            쉬는 시간입니다
-                        </h3>
-                        <p className="text-slate-200 text-lg font-medium px-4 leading-relaxed bg-amber-950/40 border border-amber-800/40 rounded-2xl py-4">
-                            {customMessage || "쉬는 시간입니다"}
-                        </p>
-                    </div>
-                ) : (
-                    <div className="mb-4">
-                        {item?.subject ? (
-                            <>
-                                <h3 className="text-3xl font-black text-white mb-2 tracking-tight flex items-center justify-center gap-2">
-                                    <span>{item.subject}</span>
-                                    <Sparkles className="w-6 h-6 text-yellow-400 inline" />
-                                </h3>
-                                {item.topic && (
-                                    <p className="text-slate-300 text-base font-medium mb-3 px-2 line-clamp-2">
-                                        주제: {item.topic}
-                                    </p>
-                                )}
-                            </>
-                        ) : (
-                            <h3 className="text-3xl font-extrabold text-white mb-3 tracking-tight">
-                                {periodName} 시작 시간입니다!
-                            </h3>
-                        )}
+                {/* Bottom Action Buttons (Large & Clear) */}
+                <div className="pt-6 border-t border-slate-700/60 mt-4 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
+                    {/* Primary Button: 교과서 열기 or 수업 시작 */}
+                    {!isRestTime && hasBookTarget ? (
+                        <button
+                            onClick={handleConfirmAndGo}
+                            className="w-full sm:w-auto flex-1 max-w-md py-4 sm:py-5 px-8 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black text-lg sm:text-2xl rounded-2xl sm:rounded-3xl shadow-xl shadow-violet-600/40 transition-all flex items-center justify-center gap-3 group cursor-pointer active:scale-98"
+                        >
+                            <BookOpen className="w-6 h-6 sm:w-7 sm:h-7" />
+                            <span>교과서 열기 ({item?.pageStr || `${targetPage}쪽`})</span>
+                            <ArrowRight className="w-6 h-6 sm:w-7 sm:h-7 group-hover:translate-x-1.5 transition-transform" />
+                        </button>
+                    ) : null}
 
-                        {customMessage && (
-                            <p className="text-violet-200 text-base font-medium mb-4 px-3 py-2.5 bg-violet-950/40 border border-violet-800/40 rounded-xl">
-                                {customMessage}
-                            </p>
-                        )}
-                    </div>
-                )}
-
-                {/* Textbook and Page Number Card (Only for Class Start) */}
-                {!isRestTime && item && (
-                    <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 mb-6 shadow-inner text-center">
-                        {item.pageStr || (item.startPage && item.startPage > 0) ? (
-                            <>
-                                <div className="text-xs uppercase tracking-wider text-slate-400 mb-1 font-semibold">
-                                    학습 교재 및 쪽수
-                                </div>
-                                <div className="text-3xl font-black text-violet-400">
-                                    {item.pageStr || `${targetPage}쪽`}
-                                </div>
-                                {item.matchedBookId && (
-                                    <div className="text-xs text-slate-300 mt-1.5 flex items-center justify-center gap-1">
-                                        <BookOpen className="w-3.5 h-3.5 text-violet-400" />
-                                        <span>연결된 교재: <strong>{item.matchedBookId}</strong></span>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <>
-                                <div className="text-xs uppercase tracking-wider text-amber-400/90 mb-1 font-semibold">
-                                    수업 안내
-                                </div>
-                                <div className="text-2xl font-black text-amber-300">
-                                    교과서 없는 활동 수업
-                                </div>
-                                <div className="text-xs text-slate-300 mt-1.5 flex items-center justify-center gap-1">
-                                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                                    <span>{item.topic || `${item.subject} (자율·체험·창체 활동)`}</span>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                )}
-
-                {/* Buttons */}
-                <div className="flex flex-col gap-3">
-                    <button
-                        onClick={handleConfirmAndGo}
-                        className={`w-full py-4 px-6 bg-gradient-to-r ${isRestTime ? 'from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-amber-600/40' : 'from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-violet-600/40'} text-white font-bold text-lg rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 group cursor-pointer active:scale-95`}
-                    >
-                        <span>{isRestTime ? "확인 및 알림 끄기" : hasBookTarget ? "종료 (해당 교과서 보기)" : "확인 및 닫기"}</span>
-                        {!isRestTime && hasBookTarget && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
-                    </button>
-
+                    {/* Close Button: 교사가 닫기를 누르면 닫힘 */}
                     <button
                         onClick={onClose}
-                        className="w-full py-2 px-4 text-slate-400 hover:text-slate-200 text-sm font-medium transition-colors"
+                        className={`${
+                            !isRestTime && hasBookTarget 
+                                ? 'w-full sm:w-auto px-8 py-4 sm:py-5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600' 
+                                : 'w-full max-w-md py-4 sm:py-5 px-8 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-600 hover:to-slate-700 text-white shadow-lg'
+                        } font-black text-lg sm:text-xl rounded-2xl sm:rounded-3xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98`}
                     >
-                        닫기
+                        <Check className="w-6 h-6" />
+                        <span>닫기</span>
                     </button>
-                </div>
-
-                {/* Animated 3-second progress bar */}
-                <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/10 overflow-hidden">
-                    <div
-                        className={`h-full ${isRestTime ? 'bg-amber-400' : 'bg-violet-400'} transition-all ease-linear`}
-                        style={{
-                            width: `${(timeLeft / 3) * 100}%`,
-                            transitionDuration: '1000ms'
-                        }}
-                    />
                 </div>
             </div>
         </div>

@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "주간학습안내 HWPML/HWP 4칸 분할 구조(교과/단원/주제/쪽수 앞쪽칸) 자동 인식 및 슬생·즐생·바생 통합교과 '하루' 매칭 고도화 (v1.2.12)"
+    notes = "수업 시작 시간 대형 알림(교과서 쪽수·주제 강조 및 수동 닫기) 적용, 상단 플로팅 교시 바 제거 (v1.2.13)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

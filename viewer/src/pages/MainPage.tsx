@@ -83,15 +83,6 @@ export default function MainPage() {
     const [alertCustomMessage, setAlertCustomMessage] = useState('');
     const lastAlertTimeRef = useRef<string>('');
 
-    // Persistent Lesson Widget (Shows subject & pages after class start alert closes, until user clicks close)
-    const [activeLesson, setActiveLesson] = useState<{
-        periodName: string;
-        subject: string;
-        pageStr: string;
-        startPage?: number;
-        topic?: string;
-        matchedBookId?: string;
-    } | null>(null);
 
     // Schedule Config Modal State
     const [isBellConfigModalOpen, setIsBellConfigModalOpen] = useState(false);
@@ -802,79 +793,10 @@ export default function MainPage() {
                 customMessage={alertCustomMessage}
                 item={alertItem}
                 onClose={() => {
-                    const isClassStart = !alertIsRestTime;
-                    const itm = alertItem;
-                    const pNum = alertPeriod;
                     setIsAlertModalOpen(false);
-
-                    // 수업 시작 알림이 꺼지면 교과명과 쪽수를 자동으로 띄우고 닫기를 누를 때까지 유지
-                    if (isClassStart && (itm || pNum)) {
-                        setActiveLesson({
-                            periodName: `${pNum}교시`,
-                            subject: itm?.subject || "수업",
-                            pageStr: itm?.pageStr || (itm?.startPage ? `${itm.startPage}쪽` : ""),
-                            startPage: itm?.startPage || 1,
-                            topic: itm?.topic,
-                            matchedBookId: itm?.matchedBookId
-                        });
-                    }
                 }}
                 onGoToBook={handleGoToBook}
             />
-
-            {/* Persistent Class Subject & Page Widget (Stays until user clicks close) */}
-            {activeLesson && (
-                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-3 bg-slate-900/95 hover:bg-slate-900 backdrop-blur-xl border border-violet-500/70 shadow-[0_10px_35px_rgba(0,0,0,0.6)] rounded-2xl px-5 py-2.5 text-white transition-all animate-in slide-in-from-top-3 duration-300 select-none">
-                    {/* 교시 뱃지 */}
-                    <div className="px-2.5 py-1 bg-violet-600/30 border border-violet-400/40 text-violet-300 font-bold rounded-xl text-xs flex items-center gap-1 shrink-0">
-                        <Clock className="w-3.5 h-3.5 text-violet-400" />
-                        <span>{activeLesson.periodName}</span>
-                    </div>
-
-                    {/* 교과명 & 쪽수 */}
-                    <div 
-                        onClick={() => {
-                            if (activeLesson.matchedBookId) {
-                                handleGoToBook(activeLesson.matchedBookId, activeLesson.startPage || 1);
-                            } else {
-                                showToast(`[${activeLesson.subject}] 교과서가 없는 활동 수업입니다.`);
-                            }
-                        }}
-                        className="flex items-center gap-2.5 cursor-pointer group"
-                        title={activeLesson.matchedBookId ? "클릭하면 해당 교과서로 이동합니다" : "교과서가 없는 활동 수업입니다"}
-                    >
-                        <div className="flex items-center gap-1.5 font-black text-base text-white group-hover:text-violet-300 transition-colors">
-                            <BookOpen className="w-4 h-4 text-violet-400" />
-                            <span>{activeLesson.subject}</span>
-                        </div>
-
-                        {activeLesson.pageStr ? (
-                            <div className="px-2.5 py-0.5 bg-amber-500/20 border border-amber-400/50 text-amber-300 font-black rounded-lg text-sm group-hover:scale-105 transition-transform shadow-xs">
-                                {activeLesson.pageStr}
-                            </div>
-                        ) : (
-                            <div className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-bold rounded-lg text-xs">
-                                자율·활동
-                            </div>
-                        )}
-
-                        {activeLesson.topic && (
-                            <div className="text-xs text-slate-300 max-w-[200px] truncate hidden md:block pl-2 border-l border-slate-700/80">
-                                {activeLesson.topic}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 닫기 버튼: 사용자가 닫기를 누를 때까지 계속 떠 있음 */}
-                    <button
-                        onClick={() => setActiveLesson(null)}
-                        className="ml-1 p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                        title="닫기"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
-            )}
 
             {/* Schedule & Alert Text Config Modal */}
             <ScheduleConfigModal
