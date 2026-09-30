@@ -1,9 +1,9 @@
 {
-  "version": "1.2.17",
+  "version": "1.2.18",
   "releaseDate": "2026-09-30",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.17/classbook-setup-v1.2.17.exe",
-  "installerName": "classbook-setup-v1.2.17.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.17.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T051449Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1212e3c11e130dcacf3acbd6e87a15bad5b8e8de1594dc261607cd77aa577e11",
-  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.17.exe",
-  "notes": "양쪽 사이드바 주학습계획안 교과서 열기 연동(학기/테마 교과서 자동 매칭 및 빈화면 안전 전환), 로컬 이미지 서빙 및 파서 탐색 안정화 (v1.2.17)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.18/classbook-setup-v1.2.18.exe",
+  "installerName": "classbook-setup-v1.2.18.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.18.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T060740Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=80c924bd01314d56e05ea10754f7cb9af446c49df948a32fd313635f8390e486",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.18.exe",
+  "notes": "실행 시 메인 교과서 목록 기본 표시 및 하단 플로팅 메뉴 [오늘 수업 시작] 버튼 추가 (v1.2.18)"
 }

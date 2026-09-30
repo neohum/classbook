@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
     BookOpen, BookCopy, ArrowRight, X, Maximize, Minimize, 
     Trash2, Plus, Loader2, Calendar, FolderOpen, Upload, 
-    SlidersHorizontal, Bell, Sparkles, CheckCircle2, Clock 
+    SlidersHorizontal, Bell, Sparkles, CheckCircle2, Clock, Play
 } from 'lucide-react';
 import { Quit, WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { 
@@ -211,15 +211,7 @@ export default function MainPage() {
 
                 if (plan && plan.success) {
                     setCurrentPlan(plan);
-
-                    // 앱 시작 시 한 번만 현재 요일 & 시간에 맞춰 해당 교과서 페이지로 자동 진입!
-                    const hasNavigated = sessionStorage.getItem('classbook_initial_nav_done');
-                    if (!hasNavigated) {
-                        sessionStorage.setItem('classbook_initial_nav_done', 'true');
-                        setTimeout(() => {
-                            applyWeeklyPlan(plan);
-                        }, 400);
-                    }
+                    // 앱 시작 시 항상 교과서 목록 화면이 먼저 표시되도록 유지 (자동 화면 전환 비활성화)
                 }
             } catch (err) {
                 console.error("Failed to load initial data:", err);
@@ -232,7 +224,6 @@ export default function MainPage() {
             if (plan && plan.success) {
                 setCurrentPlan(plan);
                 showToast(`새 주학습계획안이 감지되어 분석되었습니다: ${plan.title}`);
-                applyWeeklyPlan(plan);
             }
         };
 
@@ -521,6 +512,110 @@ export default function MainPage() {
         navigate(`/viewer/blank?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}&period=${encodeURIComponent(period ? `${period}교시` : '활동 수업')}`);
     };
 
+    // Start today's class based on weekly plan and current time/period
+    const handleStartTodayClass = async () => {
+        let plan = currentPlan;
+        if (!plan || !plan.success || !plan.schedule) {
+            try {
+                const local = localStorage.getItem('classbook_weekly_plan_db');
+                if (local) {
+                    const parsed = JSON.parse(local);
+                    if (parsed && parsed.schedule) {
+                        plan = parsed;
+                        setCurrentPlan(parsed);
+                    }
+                }
+            } catch (e) {}
+        }
+        if (!plan || !plan.success || !plan.schedule) {
+            try {
+                const fetched = await GetLatestWeeklyPlan();
+                if (fetched && fetched.success && fetched.schedule) {
+                    plan = fetched;
+                    setCurrentPlan(fetched);
+                }
+            } catch (e) {}
+        }
+
+        if (!plan || !plan.schedule) {
+            alert("등록된 주학습계획안이 없습니다.\n하단의 [주안 미리보기]에서 주학습계획안(HWP/HWPX)을 등록해주세요.");
+            setIsScheduleModalOpen(true);
+            return;
+        }
+
+        const now = new Date();
+        const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+        const isWeekend = dayOfWeek === '일' || dayOfWeek === '토';
+        const targetDay = isWeekend ? '월' : dayOfWeek;
+        const dayItems = plan.schedule[targetDay] || [];
+
+        if (dayItems.length === 0) {
+            alert(`[${targetDay}요일]에 등록된 수업 계획이 없습니다.\n[주안 미리보기]에서 수업 내용을 확인하거나 등록해주세요.`);
+            setIsScheduleModalOpen(true);
+            return;
+        }
+
+        const hh = now.getHours().toString().padStart(2, '0');
+        const mm = now.getMinutes().toString().padStart(2, '0');
+        const currentTimeStr = `${hh}:${mm}`;
+
+        const currentSchedules = getStoredSchedule();
+        let activePeriod = 1;
+        let activeSched = currentSchedules.length > 0 ? currentSchedules[0] : undefined;
+
+        if (currentSchedules.length > 0) {
+            for (let i = 0; i < currentSchedules.length; i++) {
+                const s = currentSchedules[i];
+                const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+                if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
+                    activePeriod = pNum;
+                    activeSched = s;
+                    break;
+                } else if (currentTimeStr < s.startTime) {
+                    activePeriod = pNum;
+                    activeSched = s;
+                    break;
+                } else if (currentTimeStr > s.endTime) {
+                    activePeriod = pNum;
+                    activeSched = s;
+                }
+            }
+        }
+
+        let targetItem = dayItems.find(it => it.period === activePeriod);
+        if (!targetItem && dayItems.length > 0) {
+            targetItem = dayItems[activePeriod - 1] || dayItems[0];
+        }
+
+        if (!targetItem) {
+            targetItem = dayItems[0];
+        }
+
+        const periodName = activeSched?.name || `${targetItem.period || activePeriod}교시`;
+        let currentBooks = textbooks;
+        if (!currentBooks || currentBooks.length === 0) {
+            try {
+                currentBooks = (await GetTextbooks()) || [];
+                if (currentBooks.length > 0) setTextbooks(currentBooks);
+            } catch (e) {}
+        }
+
+        const targetPage = targetItem.startPage || 1;
+        const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, currentBooks);
+        const topicQ = targetItem.topic ? `&topic=${encodeURIComponent(targetItem.topic)}` : '';
+        const subjQ = targetItem.subject ? `&subject=${encodeURIComponent(targetItem.subject)}` : '';
+        const periodQ = `&period=${encodeURIComponent(periodName)}`;
+
+        if (resolved) {
+            showToast(`${isWeekend ? '[주말 대체 월요일]' : `[오늘 ${targetDay}요일]`} ${periodName} [${resolved.title} ${targetPage}쪽] 수업을 시작합니다.`);
+            navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}${topicQ}${subjQ}${periodQ}`);
+        } else {
+            // 교과서가 없는 과목인 경우 빈 화면 모드로 바로 진입
+            showToast(`${isWeekend ? '[주말 대체 월요일]' : `[오늘 ${targetDay}요일]`} ${periodName} [${targetItem.subject}] 빈 화면 수업을 시작합니다.`);
+            navigate(`/viewer/blank?${topicQ ? topicQ.slice(1) : ''}${subjQ}${periodQ}`);
+        }
+    };
+
     // Manual trigger for current time class alert (or test preview)
     const handleTriggerTestAlert = () => {
         if (!currentPlan || !currentPlan.schedule) {
@@ -633,7 +728,6 @@ export default function MainPage() {
                                     if (res && res.success) {
                                         setCurrentPlan(res);
                                         showToast(`주학습계획안이 분석되었습니다: ${res.title}`);
-                                        applyWeeklyPlan(res);
                                     }
                                 } catch (e: any) {
                                     alert(`계획안 파일 로드 실패: ${e.message || e}`);
@@ -790,7 +884,6 @@ export default function MainPage() {
                 onPlanUpdated={(newPlan) => {
                     setCurrentPlan(newPlan);
                     showToast("주학습계획안이 업데이트되었습니다.");
-                    applyWeeklyPlan(newPlan);
                 }}
                 onWatchFolderChanged={(newFolder) => {
                     setWatchFolder(newFolder);
@@ -822,17 +915,31 @@ export default function MainPage() {
             />
 
             {/* Bottom Floating Action Bar */}
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/40 hover:bg-slate-900/60 text-white backdrop-blur-xl px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3 sm:gap-4 pointer-events-auto transition-all animate-in fade-in slide-in-from-bottom-4 duration-300 whitespace-nowrap select-none max-w-[95vw]">
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/50 hover:bg-slate-900/70 text-white backdrop-blur-xl px-5 sm:px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-2.5 sm:gap-3.5 pointer-events-auto transition-all animate-in fade-in slide-in-from-bottom-4 duration-300 whitespace-nowrap select-none max-w-[95vw]">
+                {/* 오늘 수업 시작 (메인 실행 버튼) */}
+                <button
+                    onClick={handleStartTodayClass}
+                    className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2 shadow-lg shadow-violet-500/30 border border-violet-400/40 cursor-pointer group shrink-0 active:scale-95"
+                    title="주학습계획안에 따라 오늘 교시 수업을 바로 시작합니다"
+                >
+                    <Play className="w-4 h-4 fill-white text-white group-hover:scale-110 transition-transform shrink-0" />
+                    <span className="whitespace-nowrap">오늘 수업 시작</span>
+                    <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                </button>
+
                 {/* 주안 미리보기 (주학습 계획안) */}
                 <button
                     onClick={() => setIsScheduleModalOpen(true)}
-                    className="px-4 py-2.5 bg-slate-800/50 hover:bg-violet-600/80 text-slate-100 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 border border-white/10 hover:border-violet-400/50 shadow-sm cursor-pointer group shrink-0 whitespace-nowrap"
+                    className="px-4 py-2.5 bg-slate-800/60 hover:bg-violet-600/80 text-slate-100 hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 border border-white/10 hover:border-violet-400/50 shadow-sm cursor-pointer group shrink-0 whitespace-nowrap"
                     title="주학습 계획안 미리보기 및 다른 날의 차시 열기"
                 >
                     <Calendar className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform shrink-0" />
                     <span className="whitespace-nowrap">주안 미리보기</span>
                     {currentPlan && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
                     )}
                 </button>
 

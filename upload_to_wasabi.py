@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "양쪽 사이드바 주학습계획안 교과서 열기 연동(학기/테마 교과서 자동 매칭 및 빈화면 안전 전환), 로컬 이미지 서빙 및 파서 탐색 안정화 (v1.2.17)"
+    notes = "실행 시 메인 교과서 목록 기본 표시 및 하단 플로팅 메뉴 [오늘 수업 시작] 버튼 추가 (v1.2.18)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()
