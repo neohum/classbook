@@ -3,7 +3,7 @@
   "releaseDate": "2026-09-30",
   "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.11/classbook-setup-v1.2.11.exe",
   "installerName": "classbook-setup-v1.2.11.exe",
-  "wasabiPresignedUrl": "",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.11.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T011919Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=10c485e2dfd08d31c638f86fa010fdaff855cbcf184368ee6fdca86251b7d067",
   "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.11.exe",
   "notes": "주학습계획안 rhwp 고정밀 분석 엔진 적용, 교과서 모드 필기 시 상단 팝업 툴바 제거, 계획안 내 교과서 선택 및 빈 화면 활동 입력 지원, 기본 DB 연동 (v1.2.11)"
 }
