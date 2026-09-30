@@ -9,7 +9,8 @@ import { Quit, WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, EventsO
 import { 
     DeleteBook, SelectMultiplePdfsDialog, ReadFileBase64, 
     EnsureBookDirWithOffset, SavePageImage, GetTextbooks, GetAppVersion,
-    GetWatchFolder, SelectWatchFolderDialog, GetLatestWeeklyPlan, SelectWeeklyPlanFileDialog
+    GetWatchFolder, SelectWatchFolderDialog, GetLatestWeeklyPlan, SelectWeeklyPlanFileDialog,
+    GetBellSchedules
 } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -78,6 +79,7 @@ export default function MainPage() {
     // Class Alert States
     const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
     const [alertPeriod, setAlertPeriod] = useState(1);
+    const [alertPeriodName, setAlertPeriodName] = useState('1교시');
     const [alertPeriodTime, setAlertPeriodTime] = useState('');
     const [alertItem, setAlertItem] = useState<main.WeeklyPlanItem | null>(null);
     const [alertIsRestTime, setAlertIsRestTime] = useState(false);
@@ -127,7 +129,7 @@ export default function MainPage() {
 
         for (let i = 0; i < currentSchedules.length; i++) {
             const s = currentSchedules[i];
-            const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+            const pNum = s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1));
             if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                 activePeriod = pNum;
                 activeSched = s;
@@ -213,6 +215,17 @@ export default function MainPage() {
                     setCurrentPlan(plan);
                     // 앱 시작 시 항상 교과서 목록 화면이 먼저 표시되도록 유지 (자동 화면 전환 비활성화)
                 }
+
+                try {
+                    const savedSchedules = await GetBellSchedules();
+                    if (savedSchedules) {
+                        const parsed = JSON.parse(savedSchedules);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            localStorage.setItem('classbook_schedule_v3', savedSchedules);
+                            setSchedules(parsed);
+                        }
+                    }
+                } catch (e) {}
             } catch (err) {
                 console.error("Failed to load initial data:", err);
             }
@@ -260,7 +273,7 @@ export default function MainPage() {
             // Check if current time matches any period start or end
             for (let i = 0; i < currentSchedules.length; i++) {
                 const sched = currentSchedules[i];
-                const schedPeriod = sched.period || parseInt(sched.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+                const schedPeriod = sched.period !== undefined ? sched.period : (parseInt(sched.name.replace(/[^0-9]/g, ''), 10) || (i + 1));
 
                 if (sched.startTime === currentTimeStr) {
                     lastAlertTimeRef.current = currentTimeStr;
@@ -272,6 +285,7 @@ export default function MainPage() {
 
                     const periodTitle = sched.name || `${schedPeriod}교시`;
                     setAlertPeriod(schedPeriod);
+                    setAlertPeriodName(periodTitle);
                     setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
                     setAlertItem(foundItem || null);
                     setAlertIsRestTime(false);
@@ -298,7 +312,9 @@ export default function MainPage() {
                 } else if (sched.endTime === currentTimeStr) {
                     lastAlertTimeRef.current = currentTimeStr;
                     // 마칠 때 (쉬는 시간 시작): "쉬는 시간입니다"가 기본으로 뜸
+                    const periodTitle = sched.name || `${schedPeriod}교시`;
                     setAlertPeriod(schedPeriod);
+                    setAlertPeriodName(periodTitle);
                     setAlertPeriodTime(sched.endTime);
                     setAlertItem(null);
                     setAlertIsRestTime(true);
@@ -566,7 +582,7 @@ export default function MainPage() {
         if (currentSchedules.length > 0) {
             for (let i = 0; i < currentSchedules.length; i++) {
                 const s = currentSchedules[i];
-                const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+                const pNum = s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1));
                 if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                     activePeriod = pNum;
                     activeSched = s;
@@ -897,7 +913,7 @@ export default function MainPage() {
             <WeeklyPlanAlertModal
                 isOpen={isAlertModalOpen}
                 isRestTime={alertIsRestTime}
-                periodName={`${alertPeriod}교시`}
+                periodName={alertPeriodName || `${alertPeriod}교시`}
                 periodTime={alertPeriodTime}
                 customMessage={alertCustomMessage}
                 item={alertItem}

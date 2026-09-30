@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "실행 시 메인 교과서 목록 기본 표시 및 하단 플로팅 메뉴 [오늘 수업 시작] 버튼 추가 (v1.2.18)"
+    notes = "시종 시간 직접 입력 자동 저장 및 시간순 정렬, 시간표/알림 영구 동기화 개선 (v1.2.19)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

@@ -310,7 +310,7 @@ export default function ViewerPage() {
                     let activeSched = currentScheds[0];
                     for (let i = 0; i < currentScheds.length; i++) {
                         const s = currentScheds[i];
-                        const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+                        const pNum = s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1));
                         if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                             activePeriod = pNum;
                             activeSched = s;
@@ -451,12 +451,6 @@ export default function ViewerPage() {
         return defaultSchedule;
     });
 
-    useEffect(() => {
-        try {
-            localStorage.setItem('classbook_schedule_v3', JSON.stringify(schedules));
-        } catch (e) { }
-    }, [schedules]);
-
     const [isScheduleEnabled, setIsScheduleEnabled] = useState(true);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
     const lastTriggeredMinuteRef = React.useRef("");
@@ -497,7 +491,7 @@ export default function ViewerPage() {
         // Find active or upcoming period
         let activePeriod = 1;
         for (const s of schedules) {
-            const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || 1;
+            const pNum = s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || 1);
             if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                 activePeriod = pNum;
                 break;
@@ -544,7 +538,7 @@ export default function ViewerPage() {
 
             for (let i = 0; i < schedules.length; i++) {
                 const item = schedules[i];
-                const periodNum = item.period || parseInt(item.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+                const periodNum = item.period !== undefined ? item.period : (parseInt(item.name.replace(/[^0-9]/g, ''), 10) || (i + 1));
 
                 if (item.startTime === currentTimeStr) {
                     lastTriggeredMinuteRef.current = currentTimeStr;

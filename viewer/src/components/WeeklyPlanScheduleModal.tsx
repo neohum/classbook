@@ -15,6 +15,7 @@ import {
 import HwpHtmlViewerModal from './HwpHtmlViewerModal';
 import ErrorBoundary from './ErrorBoundary';
 import { resolveBookForSubject } from '../utils/bookResolver';
+import { getStoredSchedule, type ScheduleItem } from './ScheduleConfigModal';
 
 interface Props {
     isOpen: boolean;
@@ -28,7 +29,6 @@ interface Props {
 }
 
 const DAY_LABELS = ['월', '화', '수', '목', '금'];
-const PERIOD_LIST = [1, 2, 3, 4, 5, 6];
 
 interface EditFormState {
     isNew: boolean;
@@ -88,6 +88,54 @@ function WeeklyPlanScheduleModalContent({
     const [isReanalyzing, setIsReanalyzing] = useState(false);
     const [isHwpHtmlViewerOpen, setIsHwpHtmlViewerOpen] = useState(false);
     const [availableBooks, setAvailableBooks] = useState<main.Textbook[]>([]);
+    const [storedSchedules, setStoredSchedules] = useState<ScheduleItem[]>(() => getStoredSchedule());
+
+    useEffect(() => {
+        const updateScheds = () => {
+            setStoredSchedules(getStoredSchedule());
+        };
+        window.addEventListener('classbook_schedule_updated', updateScheds);
+        return () => window.removeEventListener('classbook_schedule_updated', updateScheds);
+    }, []);
+
+    const schedulePeriods = useMemo(() => {
+        const periodMap = new Map<number, { period: number; name: string; time: string }>();
+
+        storedSchedules.forEach((s, idx) => {
+            const p = s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (idx + 1));
+            const timeStr = (s.startTime && s.endTime) ? `${s.startTime}~${s.endTime}` : (s.startTime || '');
+            periodMap.set(p, {
+                period: p,
+                name: s.name || `${p}교시`,
+                time: timeStr
+            });
+        });
+
+        // Also check if effectivePlan has any periods not in storedSchedules
+        if (effectivePlan?.schedule) {
+            Object.values(effectivePlan.schedule).forEach(dayItems => {
+                dayItems.forEach(item => {
+                    const p = item.period !== undefined ? item.period : 1;
+                    if (!periodMap.has(p)) {
+                        periodMap.set(p, {
+                            period: p,
+                            name: `${p}교시`,
+                            time: ''
+                        });
+                    }
+                });
+            });
+        }
+
+        // Fallback default: ensure at least periods 1 to 6 exist if empty
+        if (periodMap.size === 0) {
+            [1, 2, 3, 4, 5, 6].forEach(p => {
+                periodMap.set(p, { period: p, name: `${p}교시`, time: '' });
+            });
+        }
+
+        return Array.from(periodMap.values()).sort((a, b) => a.period - b.period);
+    }, [storedSchedules, effectivePlan]);
 
     // Edit/Add Form State
     const [editingItem, setEditingItem] = useState<EditFormState | null>(null);
@@ -173,7 +221,7 @@ function WeeklyPlanScheduleModalContent({
 
         const grouped = new Map<number, main.WeeklyPlanItem[]>();
         for (const itm of rawItems) {
-            const p = itm.period || 1;
+            const p = itm.period !== undefined ? itm.period : 1;
             if (!grouped.has(p)) grouped.set(p, []);
             grouped.get(p)!.push(itm);
         }
@@ -265,13 +313,13 @@ function WeeklyPlanScheduleModalContent({
     // Open item editor for adding
     const handleStartAdd = (targetDay: string = selectedDay, targetPeriod?: number) => {
         const dayItems = getSanitizedDayItems(targetDay);
-        const nextPeriod = targetPeriod || (dayItems.length > 0 
-            ? Math.max(...dayItems.map(i => i.period || 0)) + 1 
-            : 1);
+        const nextPeriod = targetPeriod !== undefined ? targetPeriod : (dayItems.length > 0 
+            ? Math.max(...dayItems.map(i => i.period !== undefined ? i.period : 0)) + 1 
+            : (schedulePeriods.length > 0 ? schedulePeriods[0].period : 1));
         setEditingItem({
             isNew: true,
             day: targetDay,
-            period: nextPeriod > 6 ? 6 : nextPeriod,
+            period: nextPeriod,
             subject: '창체',
             matchedBookId: availableBooks.length > 0 ? availableBooks[0].id : '',
             startPage: 1,
@@ -288,7 +336,7 @@ function WeeklyPlanScheduleModalContent({
             isNew: false,
             day: targetDay,
             index: idx,
-            period: itm.period || (idx + 1),
+            period: itm.period !== undefined ? itm.period : (idx + 1),
             subject: itm.subject || (isBlank ? '활동' : '국어'),
             matchedBookId: itm.matchedBookId || (availableBooks.length > 0 ? availableBooks[0].id : ''),
             startPage: itm.startPage || 1,
@@ -344,7 +392,7 @@ function WeeklyPlanScheduleModalContent({
         };
 
         dayList.push(newItem);
-        dayList.sort((a, b) => (a.period || 0) - (b.period || 0));
+        dayList.sort((a, b) => (a.period !== undefined ? a.period : 0) - (b.period !== undefined ? b.period : 0));
         updatedSchedule[editingItem.day] = dayList;
 
         const updatedPlan: main.WeeklyPlanResult = {
@@ -631,15 +679,15 @@ function WeeklyPlanScheduleModalContent({
                                     {/* Period */}
                                     <div>
                                         <label className="block text-xs font-bold text-slate-700 mb-1">
-                                            교시 (1~6)
+                                            교시 / 시간
                                         </label>
                                         <select
                                             value={editingItem.period}
                                             onChange={(e) => setEditingItem({ ...editingItem, period: parseInt(e.target.value, 10) })}
                                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500"
                                         >
-                                            {PERIOD_LIST.map(p => (
-                                                <option key={p} value={p}>{p}교시</option>
+                                            {schedulePeriods.map(({ period: p, name, time }) => (
+                                                <option key={p} value={p}>{name} {time ? `(${time})` : ''}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -791,20 +839,26 @@ function WeeklyPlanScheduleModalContent({
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-200 text-xs">
-                                            {PERIOD_LIST.map(period => (
+                                            {schedulePeriods.map(({ period, name, time }) => (
                                                 <tr key={period} className="hover:bg-slate-50/60 transition-colors">
                                                     {/* 교시 Label */}
-                                                    <td className="py-3 px-2 text-center font-black text-violet-700 bg-slate-50/80 border-r border-slate-200/80 select-none">
+                                                    <td className="py-2.5 px-2 text-center font-black text-violet-700 bg-slate-50/80 border-r border-slate-200/80 select-none">
                                                         <div className="flex flex-col items-center">
-                                                            <span className="text-base">{period}</span>
-                                                            <span className="text-[9px] text-slate-400 font-bold -mt-0.5">교시</span>
+                                                            <span className="text-xs sm:text-sm font-extrabold text-violet-900 leading-tight">
+                                                                {name}
+                                                            </span>
+                                                            {time && (
+                                                                <span className="text-[10px] text-slate-400 font-mono font-medium tracking-tight mt-0.5">
+                                                                    {time}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </td>
 
                                                     {/* Days (Mon - Fri) */}
                                                     {DAY_LABELS.map(day => {
                                                         const items = getSanitizedDayItems(day);
-                                                        const item = items.find(it => (it.period || 1) === period);
+                                                        const item = items.find(it => (it.period !== undefined ? it.period : 1) === period);
 
                                                         if (!item) {
                                                             return (
@@ -972,7 +1026,7 @@ function WeeklyPlanScheduleModalContent({
                                                     </button>
 
                                                     <button
-                                                        onClick={() => handleDeleteItem(selectedDay, item.period || 1)}
+                                                        onClick={() => handleDeleteItem(selectedDay, item.period !== undefined ? item.period : 1)}
                                                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
                                                         title="이 교시 항목 삭제"
                                                     >

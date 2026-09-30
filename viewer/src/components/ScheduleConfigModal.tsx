@@ -3,6 +3,7 @@ import {
     X, Clock, Plus, Trash2, Bell, Coffee, Check, RotateCcw, 
     GripVertical, ChevronUp, ChevronDown, ArrowUpDown, Sparkles 
 } from 'lucide-react';
+import { SaveBellSchedules, GetBellSchedules } from '../../wailsjs/go/main/App';
 
 export interface ScheduleItem {
     id: string;
@@ -36,8 +37,10 @@ export function getStoredSchedule(): ScheduleItem[] {
 
 export function saveStoredSchedule(schedules: ScheduleItem[]) {
     try {
-        localStorage.setItem('classbook_schedule_v3', JSON.stringify(schedules));
+        const jsonStr = JSON.stringify(schedules);
+        localStorage.setItem('classbook_schedule_v3', jsonStr);
         window.dispatchEvent(new CustomEvent('classbook_schedule_updated', { detail: schedules }));
+        SaveBellSchedules(jsonStr).catch(console.error);
     } catch (e) { }
 }
 
@@ -80,6 +83,7 @@ interface Props {
 
 export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged, extraHeaderButton }: Props) {
     const [localSchedules, setLocalSchedules] = useState<ScheduleItem[]>([]);
+    const [highlightId, setHighlightId] = useState<string | null>(null);
     
     // Drag & Drop States
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -105,20 +109,59 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
             setShowAddForm(false);
             setDraggedIndex(null);
             setDropTarget(null);
+
+            // Synchronize with backend in case localStorage was modified externally
+            GetBellSchedules().then(backendJson => {
+                if (backendJson) {
+                    try {
+                        const parsed = JSON.parse(backendJson);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            setLocalSchedules(parsed);
+                            try {
+                                localStorage.setItem('classbook_schedule_v3', backendJson);
+                            } catch (e) {}
+                        }
+                    } catch (e) {}
+                }
+            }).catch(() => {});
         }
     }, [isOpen]);
 
     if (!isOpen) return null;
 
     const handleSave = () => {
-        saveStoredSchedule(localSchedules);
-        if (onScheduleChanged) onScheduleChanged(localSchedules);
+        let schedulesToSave = [...localSchedules];
+
+        // Critical: If the user opened the form and entered start/end times but forgot to click "추가" before clicking "저장 및 닫기", auto-commit!
+        if (showAddForm && newStartTime && newEndTime) {
+            const parsedNum = parseInt(newName.replace(/[^0-9]/g, ''), 10);
+            const periodNum = !isNaN(parsedNum) ? parsedNum : (schedulesToSave.length + 1);
+            const name = newName.trim() || `${periodNum}교시`;
+            const newId = Math.random().toString(36).substring(2, 9);
+            const newItem: ScheduleItem = {
+                id: newId,
+                period: periodNum,
+                name: name,
+                startTime: newStartTime,
+                endTime: newEndTime,
+                startMessage: newStartMsg.trim() || `${name} 수업을 시작합니다.`,
+                restMessage: newRestMsg.trim() || '쉬는 시간입니다'
+            };
+            schedulesToSave.push(newItem);
+        }
+
+        // Always sort chronologically by startTime
+        schedulesToSave.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+
+        saveStoredSchedule(schedulesToSave);
+        if (onScheduleChanged) onScheduleChanged(schedulesToSave);
         onClose();
     };
 
     const handleReset = () => {
         if (window.confirm("시종 시간표와 알림 문구를 기본값(1~6교시)으로 복원하시겠습니까?")) {
             setLocalSchedules(DEFAULT_SCHEDULE);
+            saveStoredSchedule(DEFAULT_SCHEDULE);
         }
     };
 
@@ -127,18 +170,19 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
         const nextTime = getNextDefaultTime(localSchedules);
         const newPeriod = localSchedules.length + 1;
         const newId = Math.random().toString(36).substring(2, 9);
-        setLocalSchedules(prev => [
-            ...prev,
-            {
-                id: newId,
-                period: newPeriod,
-                name: `${newPeriod}교시`,
-                startTime: nextTime.startTime,
-                endTime: nextTime.endTime,
-                startMessage: `${newPeriod}교시 수업을 시작합니다.`,
-                restMessage: '쉬는 시간입니다'
-            }
-        ]);
+        const newItem: ScheduleItem = {
+            id: newId,
+            period: newPeriod,
+            name: `${newPeriod}교시`,
+            startTime: nextTime.startTime,
+            endTime: nextTime.endTime,
+            startMessage: `${newPeriod}교시 수업을 시작합니다.`,
+            restMessage: '쉬는 시간입니다'
+        };
+        const updated = [...localSchedules, newItem].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+        setLocalSchedules(updated);
+        setHighlightId(newId);
+        setTimeout(() => setHighlightId(null), 3000);
     };
 
     // Form Add (새로운 시간 입력)
@@ -147,20 +191,23 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
             alert("시작 시간과 종료 시간을 입력해주세요.");
             return;
         }
-        const newPeriod = localSchedules.length + 1;
-        const name = newName.trim() || `${newPeriod}교시`;
+        const parsedNum = parseInt(newName.replace(/[^0-9]/g, ''), 10);
+        const periodNum = !isNaN(parsedNum) ? parsedNum : (localSchedules.length + 1);
+        const name = newName.trim() || `${periodNum}교시`;
         const newId = Math.random().toString(36).substring(2, 9);
         const newItem: ScheduleItem = {
             id: newId,
-            period: newPeriod,
+            period: periodNum,
             name: name,
             startTime: newStartTime,
             endTime: newEndTime,
             startMessage: newStartMsg.trim() || `${name} 수업을 시작합니다.`,
             restMessage: newRestMsg.trim() || '쉬는 시간입니다'
         };
-        const updated = [...localSchedules, newItem];
+        const updated = [...localSchedules, newItem].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
         setLocalSchedules(updated);
+        setHighlightId(newId);
+        setTimeout(() => setHighlightId(null), 3000);
 
         // Prep next defaults
         const nextTime = getNextDefaultTime(updated);
@@ -329,6 +376,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                         type="text"
                                         value={newName}
                                         onChange={(e) => setNewName(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleFormAdd(); }}
                                         placeholder="예: 아침활동, 7교시"
                                         className="w-full bg-slate-950 text-white font-bold text-sm px-3 py-2 rounded-xl border border-violet-500/30 focus:border-violet-500 outline-none"
                                     />
@@ -341,6 +389,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                         type="time"
                                         value={newStartTime}
                                         onChange={(e) => setNewStartTime(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleFormAdd(); }}
                                         className="w-full bg-slate-950 text-white font-mono font-bold text-sm px-3 py-2 rounded-xl border border-violet-500/30 focus:border-violet-500 outline-none"
                                     />
                                 </div>
@@ -352,6 +401,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                         type="time"
                                         value={newEndTime}
                                         onChange={(e) => setNewEndTime(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleFormAdd(); }}
                                         className="w-full bg-slate-950 text-white font-mono font-bold text-sm px-3 py-2 rounded-xl border border-violet-500/30 focus:border-violet-500 outline-none"
                                     />
                                 </div>
@@ -367,6 +417,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                         type="text"
                                         value={newStartMsg}
                                         onChange={(e) => setNewStartMsg(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleFormAdd(); }}
                                         placeholder="수업 시작 시 화면에 뜰 문구"
                                         className="w-full bg-slate-950 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-700 focus:border-violet-500 outline-none"
                                     />
@@ -380,6 +431,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                         type="text"
                                         value={newRestMsg}
                                         onChange={(e) => setNewRestMsg(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleFormAdd(); }}
                                         placeholder="쉬는 시간입니다"
                                         className="w-full bg-slate-950 text-slate-200 text-xs px-3 py-2 rounded-xl border border-slate-700 focus:border-amber-500 outline-none"
                                     />
@@ -389,16 +441,17 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                             <div className="flex justify-end gap-2 pt-1">
                                 <button
                                     onClick={() => setShowAddForm(false)}
-                                    className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                                    className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
                                 >
                                     취소
                                 </button>
                                 <button
                                     onClick={handleFormAdd}
                                     className="flex items-center gap-1.5 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer"
+                                    title="입력한 시간을 목록에 추가하고 시간순으로 정렬합니다"
                                 >
                                     <Plus className="w-3.5 h-3.5" />
-                                    <span>시간표에 추가</span>
+                                    <span>시간표 목록에 추가 (+)</span>
                                 </button>
                             </div>
                         </div>
@@ -421,6 +474,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                     <div className="space-y-3">
                         {localSchedules.map((schedule, idx) => {
                             const isBeingDragged = draggedIndex === idx;
+                            const isHighlighted = schedule.id === highlightId;
                             const showLineBefore = dropTarget?.index === idx && dropTarget?.position === 'before' && draggedIndex !== idx;
                             const showLineAfter = dropTarget?.index === idx && dropTarget?.position === 'after' && draggedIndex !== idx;
 
@@ -435,10 +489,12 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                         onDragOver={(e) => handleDragOver(e, idx)}
                                         onDrop={(e) => handleDrop(e, idx)}
                                         onDragEnd={handleDragEnd}
-                                        className={`bg-slate-800/80 border rounded-2xl p-4 flex flex-col gap-3 transition-all duration-150 ${
+                                        className={`bg-slate-800/80 border rounded-2xl p-4 flex flex-col gap-3 transition-all duration-200 ${
                                             isBeingDragged 
                                                 ? 'opacity-30 scale-[0.98] border-violet-500 ring-2 ring-violet-500/50 bg-slate-900' 
-                                                : 'border-slate-700/70 hover:border-slate-600'
+                                                : isHighlighted
+                                                    ? 'border-emerald-400 ring-2 ring-emerald-400/80 bg-slate-800/95 shadow-[0_0_20px_rgba(52,211,153,0.3)] animate-pulse'
+                                                    : 'border-slate-700/70 hover:border-slate-600'
                                         }`}
                                     >
                                     {/* Top Row: Drag Handle, Number, Name, Times, Reorder Buttons, Delete */}

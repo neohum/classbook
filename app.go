@@ -24,7 +24,7 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.18"
+const AppVersion = "1.2.19"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -41,6 +41,7 @@ type AppSettings struct {
 	PlanWatchFolder string    `json:"planWatchFolder"`
 	LastPlanFile    string    `json:"lastPlanFile"`
 	LastPlanModTime time.Time `json:"lastPlanModTime"`
+	BellSchedules   string    `json:"bellSchedules,omitempty"`
 }
 
 // App struct
@@ -585,6 +586,18 @@ func (a *App) SetWatchFolder(folderPath string) error {
 	a.settings.PlanWatchFolder = folderPath
 	a.saveSettings()
 	return nil
+}
+
+// SaveBellSchedules stores the bell schedule JSON in settings.json
+func (a *App) SaveBellSchedules(schedulesJSON string) error {
+	a.settings.BellSchedules = schedulesJSON
+	a.saveSettings()
+	return nil
+}
+
+// GetBellSchedules retrieves the bell schedule JSON from settings.json
+func (a *App) GetBellSchedules() (string, error) {
+	return a.settings.BellSchedules, nil
 }
 
 // SelectWeeklyPlanFileDialog lets user pick a .hwp or .hwpx file directly

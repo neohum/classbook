@@ -14,6 +14,8 @@ export function EnsureBookDirWithOffset(arg1:string,arg2:number,arg3:number):Pro
 
 export function GetAppVersion():Promise<string>;
 
+export function GetBellSchedules():Promise<string>;
+
 export function GetBookMetadata(arg1:string):Promise<main.Metadata>;
 
 export function GetLatestWeeklyPlan():Promise<main.WeeklyPlanResult>;
@@ -31,6 +33,8 @@ export function ParseWeeklyPlanFile(arg1:string):Promise<main.WeeklyPlanResult>;
 export function ReadFileBase64(arg1:string):Promise<string>;
 
 export function ReanalyzeWeeklyPlan():Promise<main.WeeklyPlanResult>;
+
+export function SaveBellSchedules(arg1:string):Promise<void>;
 
 export function SavePageImage(arg1:string,arg2:number,arg3:string):Promise<void>;
 

@@ -26,6 +26,10 @@ export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
 }
 
+export function GetBellSchedules() {
+  return window['go']['main']['App']['GetBellSchedules']();
+}
+
 export function GetBookMetadata(arg1) {
   return window['go']['main']['App']['GetBookMetadata'](arg1);
 }
@@ -60,6 +64,10 @@ export function ReadFileBase64(arg1) {
 
 export function ReanalyzeWeeklyPlan() {
   return window['go']['main']['App']['ReanalyzeWeeklyPlan']();
+}
+
+export function SaveBellSchedules(arg1) {
+  return window['go']['main']['App']['SaveBellSchedules'](arg1);
 }
 
 export function SavePageImage(arg1, arg2, arg3) {
