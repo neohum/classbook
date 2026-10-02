@@ -132,6 +132,10 @@ export namespace main {
 	    success: boolean;
 	    title: string;
 	    filePath: string;
+	    startDate?: string;
+	    endDate?: string;
+	    weekRange?: string;
+	    weekDates?: Record<string, string>;
 	    schedule: Record<string, Array<WeeklyPlanItem>>;
 	    error?: string;
 	
@@ -144,6 +148,10 @@ export namespace main {
 	        this.success = source["success"];
 	        this.title = source["title"];
 	        this.filePath = source["filePath"];
+	        this.startDate = source["startDate"];
+	        this.endDate = source["endDate"];
+	        this.weekRange = source["weekRange"];
+	        this.weekDates = source["weekDates"];
 	        this.schedule = this.convertValues(source["schedule"], Array<WeeklyPlanItem>, true);
 	        this.error = source["error"];
 	    }
@@ -165,6 +173,28 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class WeeklyPlanSummary {
+	    filePath: string;
+	    title: string;
+	    startDate: string;
+	    endDate: string;
+	    weekRange: string;
+	    isCurrent: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WeeklyPlanSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filePath = source["filePath"];
+	        this.title = source["title"];
+	        this.startDate = source["startDate"];
+	        this.endDate = source["endDate"];
+	        this.weekRange = source["weekRange"];
+	        this.isCurrent = source["isCurrent"];
+	    }
 	}
 
 }

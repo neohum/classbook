@@ -34,7 +34,7 @@ var embeddedWeeklyPlanScript []byte
 //go:embed convert_pdf.py
 var embeddedConvertPdfScript []byte
 
-const AppVersion = "1.2.23"
+const AppVersion = "1.2.24"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -1073,11 +1073,65 @@ type WeeklyPlanItem struct {
 }
 
 type WeeklyPlanResult struct {
-	Success  bool                        `json:"success"`
-	Title    string                      `json:"title"`
-	FilePath string                      `json:"filePath"`
-	Schedule map[string][]WeeklyPlanItem `json:"schedule"`
-	Error    string                      `json:"error,omitempty"`
+	Success   bool                        `json:"success"`
+	Title     string                      `json:"title"`
+	FilePath  string                      `json:"filePath"`
+	StartDate string                      `json:"startDate,omitempty"`
+	EndDate   string                      `json:"endDate,omitempty"`
+	WeekRange string                      `json:"weekRange,omitempty"`
+	WeekDates map[string]string           `json:"weekDates,omitempty"`
+	Schedule  map[string][]WeeklyPlanItem `json:"schedule"`
+	Error     string                      `json:"error,omitempty"`
+}
+
+type WeeklyPlanSummary struct {
+	FilePath  string `json:"filePath"`
+	Title     string `json:"title"`
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
+	WeekRange string `json:"weekRange"`
+	IsCurrent bool   `json:"isCurrent"`
+}
+
+var (
+	hwpDateRegex1 = regexp.MustCompile(`(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})\.?\s*[~∼\-]\s*(?:(\d{4})[.\-/])?(\d{1,2})[.\-/](\d{1,2})\.?`)
+	hwpDateRegex2 = regexp.MustCompile(`(\d{1,2})[월.\-/](\d{1,2})일?\.?\s*[~∼\-]\s*(\d{1,2})[월.\-/](\d{1,2})일?\.?`)
+)
+
+func parseDateRangeFromFilename(name string) (startDate, endDate, weekRange string) {
+	m1 := hwpDateRegex1.FindStringSubmatch(name)
+	if len(m1) >= 7 {
+		y1, m1Val, d1 := m1[1], m1[2], m1[3]
+		y2 := m1[4]
+		if y2 == "" {
+			y2 = y1
+		}
+		m2Val, d2 := m1[5], m1[6]
+		y1Int, _ := strconv.Atoi(y1)
+		m1Int, _ := strconv.Atoi(m1Val)
+		d1Int, _ := strconv.Atoi(d1)
+		y2Int, _ := strconv.Atoi(y2)
+		m2Int, _ := strconv.Atoi(m2Val)
+		d2Int, _ := strconv.Atoi(d2)
+
+		startDate = fmt.Sprintf("%04d-%02d-%02d", y1Int, m1Int, d1Int)
+		endDate = fmt.Sprintf("%04d-%02d-%02d", y2Int, m2Int, d2Int)
+		weekRange = fmt.Sprintf("%04d.%02d.%02d. ~ %04d.%02d.%02d.", y1Int, m1Int, d1Int, y2Int, m2Int, d2Int)
+		return
+	}
+	m2 := hwpDateRegex2.FindStringSubmatch(name)
+	if len(m2) >= 5 {
+		currYear := time.Now().Year()
+		m1Int, _ := strconv.Atoi(m2[1])
+		d1Int, _ := strconv.Atoi(m2[2])
+		m2Int, _ := strconv.Atoi(m2[3])
+		d2Int, _ := strconv.Atoi(m2[4])
+		startDate = fmt.Sprintf("%04d-%02d-%02d", currYear, m1Int, d1Int)
+		endDate = fmt.Sprintf("%04d-%02d-%02d", currYear, m2Int, d2Int)
+		weekRange = fmt.Sprintf("%04d.%02d.%02d. ~ %04d.%02d.%02d.", currYear, m1Int, d1Int, currYear, m2Int, d2Int)
+		return
+	}
+	return "", "", ""
 }
 
 // SelectWatchFolderDialog opens directory chooser for watching weekly plans
@@ -1206,64 +1260,189 @@ func (a *App) ParseWeeklyPlanFile(filePath string) (*WeeklyPlanResult, error) {
 	return &result, nil
 }
 
-// ReanalyzeWeeklyPlan forces re-parsing the current weekly plan file or the newest file in the watch folder
-func (a *App) ReanalyzeWeeklyPlan() (*WeeklyPlanResult, error) {
-	targetFile := ""
-	if a.currentPlan != nil && a.currentPlan.FilePath != "" {
-		targetFile = a.currentPlan.FilePath
+// GetWeeklyPlanList returns all available weekly plans in the watch folder, sorted chronologically with isCurrent marked
+func (a *App) GetWeeklyPlanList() ([]WeeklyPlanSummary, error) {
+	watchFolder := a.settings.PlanWatchFolder
+	var foldersToScan []string
+	if watchFolder != "" {
+		foldersToScan = append(foldersToScan, watchFolder)
 	}
-	if targetFile == "" && a.settings.LastPlanFile != "" {
-		targetFile = a.settings.LastPlanFile
+	appDir := getAppDir()
+	defaultFolder := filepath.Join(appDir, "weekly_plans")
+	if defaultFolder != watchFolder {
+		foldersToScan = append(foldersToScan, defaultFolder)
 	}
-	if targetFile == "" {
-		watchFolder := a.settings.PlanWatchFolder
-		if watchFolder != "" {
-			entries, err := os.ReadDir(watchFolder)
-			if err == nil {
-				var latestMod time.Time
-				for _, e := range entries {
-					if !e.IsDir() {
-						ext := strings.ToLower(filepath.Ext(e.Name()))
-						if ext == ".hwp" || ext == ".hwpx" {
-							if info, err := e.Info(); err == nil {
-								if info.ModTime().After(latestMod) {
-									latestMod = info.ModTime()
-									targetFile = filepath.Join(watchFolder, e.Name())
-								}
-							}
-						}
-					}
+	fallbackCloud := `N:\개인\daumcloud\2026년\05 주학습계획안`
+	if fallbackCloud != watchFolder {
+		if _, err := os.Stat(fallbackCloud); err == nil {
+			foldersToScan = append(foldersToScan, fallbackCloud)
+		}
+	}
+
+	seenPaths := make(map[string]bool)
+	var list []WeeklyPlanSummary
+
+	today := time.Now()
+	todayStr := today.Format("2006-01-02")
+
+	for _, folder := range foldersToScan {
+		entries, err := os.ReadDir(folder)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(e.Name()))
+			if ext != ".hwp" && ext != ".hwpx" {
+				continue
+			}
+			fullPath := filepath.Join(folder, e.Name())
+			if seenPaths[fullPath] {
+				continue
+			}
+			seenPaths[fullPath] = true
+
+			title := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+			startDate, endDate, weekRange := parseDateRangeFromFilename(e.Name())
+
+			isCurrent := false
+			if startDate != "" && endDate != "" {
+				isCurrent = (todayStr >= startDate && todayStr <= endDate)
+			}
+
+			list = append(list, WeeklyPlanSummary{
+				FilePath:  fullPath,
+				Title:     title,
+				StartDate: startDate,
+				EndDate:   endDate,
+				WeekRange: weekRange,
+				IsCurrent: isCurrent,
+			})
+		}
+		// If we found files in the primary watch folder, prefer it
+		if len(list) > 0 && folder == watchFolder {
+			break
+		}
+	}
+
+	// Sort chronologically by StartDate ascending, fallback to title
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].StartDate != "" && list[j].StartDate != "" {
+			if list[i].StartDate != list[j].StartDate {
+				return list[i].StartDate < list[j].StartDate
+			}
+		} else if list[i].StartDate != "" {
+			return true
+		} else if list[j].StartDate != "" {
+			return false
+		}
+		return list[i].Title < list[j].Title
+	})
+
+	// If no plan matches today exactly (e.g. weekend or date formatting edge cases),
+	// check if any plan covers the current Monday
+	hasCurrent := false
+	for _, p := range list {
+		if p.IsCurrent {
+			hasCurrent = true
+			break
+		}
+	}
+	if !hasCurrent && len(list) > 0 {
+		weekday := int(today.Weekday()) // 0 Sun, 1 Mon ...
+		offset := (weekday + 6) % 7
+		thisMonday := today.AddDate(0, 0, -offset).Format("2006-01-02")
+		for idx := range list {
+			if list[idx].StartDate != "" && list[idx].StartDate <= thisMonday && list[idx].EndDate >= thisMonday {
+				list[idx].IsCurrent = true
+				hasCurrent = true
+				break
+			}
+		}
+		// If still none, check closest past plan
+		if !hasCurrent {
+			for idx := range list {
+				if list[idx].StartDate != "" && list[idx].StartDate <= todayStr {
+					list[idx].IsCurrent = true
+					break
 				}
 			}
 		}
 	}
 
-	if targetFile == "" {
-		return nil, fmt.Errorf("재인식할 주학습계획안 파일이 없습니다. [HWP / HWPX 파일 올리기]로 파일을 선택해주세요.")
-	}
+	return list, nil
+}
 
-	result, err := a.ParseWeeklyPlanFile(targetFile)
+// GetWeeklyPlanByPath parses and loads a specific weekly plan file
+func (a *App) GetWeeklyPlanByPath(filePath string) (*WeeklyPlanResult, error) {
+	if filePath == "" {
+		return nil, fmt.Errorf("file path is empty")
+	}
+	res, err := a.ParseWeeklyPlanFile(filePath)
 	if err != nil {
 		return nil, err
 	}
-
-	a.settings.LastPlanFile = targetFile
-	if info, err := os.Stat(targetFile); err == nil {
+	a.currentPlan = res
+	a.settings.LastPlanFile = filePath
+	if info, err := os.Stat(filePath); err == nil {
 		a.settings.LastPlanModTime = info.ModTime()
 	}
 	a.saveSettings()
-
-	// Notify frontend
-	runtime.EventsEmit(a.ctx, "weekly-plan-updated", result)
-
-	return result, nil
+	a.saveCurrentPlan()
+	return res, nil
 }
 
-// GetLatestWeeklyPlan returns the currently parsed weekly plan
+// ReanalyzeWeeklyPlan forces re-parsing the current weekly plan file or date-based plan
+func (a *App) ReanalyzeWeeklyPlan() (*WeeklyPlanResult, error) {
+	if a.currentPlan != nil && a.currentPlan.FilePath != "" {
+		if _, err := os.Stat(a.currentPlan.FilePath); err == nil {
+			return a.GetWeeklyPlanByPath(a.currentPlan.FilePath)
+		}
+	}
+	return a.GetLatestWeeklyPlan()
+}
+
+// GetLatestWeeklyPlan returns the plan matching TODAY'S DATE (date-based), or current in-memory plan
 func (a *App) GetLatestWeeklyPlan() (*WeeklyPlanResult, error) {
+	todayStr := time.Now().Format("2006-01-02")
+
+	// 1. If in-memory currentPlan already matches today's date range, return it
+	if a.currentPlan != nil && a.currentPlan.Success {
+		if a.currentPlan.StartDate != "" && a.currentPlan.EndDate != "" {
+			if todayStr >= a.currentPlan.StartDate && todayStr <= a.currentPlan.EndDate {
+				return a.currentPlan, nil
+			}
+		}
+	}
+
+	// 2. Date-based: Scan watch folder for the plan matching today's date!
+	plans, err := a.GetWeeklyPlanList()
+	if err == nil && len(plans) > 0 {
+		for _, p := range plans {
+			if p.IsCurrent {
+				res, errParse := a.ParseWeeklyPlanFile(p.FilePath)
+				if errParse == nil && res.Success {
+					a.currentPlan = res
+					a.settings.LastPlanFile = p.FilePath
+					if info, errStat := os.Stat(p.FilePath); errStat == nil {
+						a.settings.LastPlanModTime = info.ModTime()
+					}
+					a.saveSettings()
+					a.saveCurrentPlan()
+					return res, nil
+				}
+			}
+		}
+	}
+
+	// 3. Fallback: if in-memory currentPlan exists, return it
 	if a.currentPlan != nil {
 		return a.currentPlan, nil
 	}
+
+	// 4. Fallback: cached latest_weekly_plan.json
 	return a.loadLatestPlan()
 }
 
@@ -1419,6 +1598,8 @@ func (a *App) startPlanFolderWatcher() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	var lastFolderSig string
+
 	for {
 		select {
 		case <-a.watcherStopChan:
@@ -1434,45 +1615,35 @@ func (a *App) startPlanFolderWatcher() {
 				continue
 			}
 
-			var latestFile string
-			var latestModTime time.Time
-
+			var b strings.Builder
 			for _, entry := range entries {
 				if entry.IsDir() {
 					continue
 				}
 				ext := strings.ToLower(filepath.Ext(entry.Name()))
 				if ext == ".hwp" || ext == ".hwpx" {
-					info, err := entry.Info()
-					if err != nil {
-						continue
-					}
-					if info.ModTime().After(latestModTime) {
-						latestModTime = info.ModTime()
-						latestFile = filepath.Join(watchFolder, entry.Name())
+					if info, err := entry.Info(); err == nil {
+						b.WriteString(fmt.Sprintf("%s:%d;", entry.Name(), info.ModTime().UnixNano()))
 					}
 				}
 			}
 
-			// If a new or updated file is detected
-			if latestFile != "" {
-				if latestFile != a.settings.LastPlanFile || latestModTime.Unix() > a.settings.LastPlanModTime.Unix() {
-					fmt.Printf("[FolderWatcher] New plan file detected: %s (mod: %v)\n", latestFile, latestModTime)
+			sig := b.String()
+			if sig != "" && sig != lastFolderSig {
+				isInitial := (lastFolderSig == "")
+				lastFolderSig = sig
 
+				if !isInitial {
+					fmt.Printf("[FolderWatcher] Watch folder changed: %s\n", watchFolder)
 					// Allow file copying to complete
 					time.Sleep(300 * time.Millisecond)
 
-					result, err := a.ParseWeeklyPlanFile(latestFile)
-					if err == nil && result.Success {
-						a.settings.LastPlanFile = latestFile
-						a.settings.LastPlanModTime = latestModTime
-						a.saveSettings()
-
-						// Notify frontend
+					// Date-based: Load the plan matching today's date!
+					result, err := a.GetLatestWeeklyPlan()
+					if err == nil && result != nil && result.Success {
 						runtime.EventsEmit(a.ctx, "weekly-plan-updated", result)
-					} else {
-						fmt.Printf("[FolderWatcher] Failed to parse: %v\n", err)
 					}
+					runtime.EventsEmit(a.ctx, "weekly-plans-list-changed", true)
 				}
 			}
 		}

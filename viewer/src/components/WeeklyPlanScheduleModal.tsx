@@ -2,15 +2,19 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     X, Calendar, FolderOpen, Upload, BookOpen, Clock, ArrowRight, 
     CheckCircle2, FileText, RotateCw, Plus, 
-    Trash2, Edit2, Square, Save, Check, LayoutGrid, List
+    Trash2, Edit2, Square, Save, Check, LayoutGrid, List,
+    ChevronLeft, ChevronRight, Sparkles
 } from 'lucide-react';
+import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { main } from '../../wailsjs/go/models';
 import { 
     SelectWatchFolderDialog, 
     SelectWeeklyPlanFileDialog, 
     ReanalyzeWeeklyPlan,
     SaveWeeklyPlan,
-    GetTextbooks
+    GetTextbooks,
+    GetWeeklyPlanList,
+    GetWeeklyPlanByPath
 } from '../../wailsjs/go/main/App';
 import HwpHtmlViewerModal from './HwpHtmlViewerModal';
 import ErrorBoundary from './ErrorBoundary';
@@ -30,12 +34,22 @@ interface Props {
 
 const DAY_LABELS = ['월', '화', '수', '목', '금'];
 
+export const DEFAULT_MORNING_TOPIC = '아침 독서 및 자율활동';
 export const DEFAULT_MORNING_TOPICS: Record<string, string> = {
-    '월': '아침 독서 및 한 주 열기',
-    '화': '아침 건강활동 및 자율독서',
-    '수': '사제동행 아침 독서',
-    '목': '학급 자치활동 및 아침글쓰기',
-    '금': '주간 돌아보기 및 자유 독서'
+    '월': DEFAULT_MORNING_TOPIC,
+    '화': DEFAULT_MORNING_TOPIC,
+    '수': DEFAULT_MORNING_TOPIC,
+    '목': DEFAULT_MORNING_TOPIC,
+    '금': DEFAULT_MORNING_TOPIC
+};
+
+const formatDayDate = (dateStr?: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
+    }
+    return dateStr;
 };
 
 interface EditFormState {
@@ -49,6 +63,7 @@ interface EditFormState {
     pageStr: string;
     topic: string;
     isBlankScreen: boolean;
+    applyToAllDays?: boolean;
 }
 
 export default function WeeklyPlanScheduleModal(props: Props) {
@@ -97,6 +112,90 @@ function WeeklyPlanScheduleModalContent({
     const [isHwpHtmlViewerOpen, setIsHwpHtmlViewerOpen] = useState(false);
     const [availableBooks, setAvailableBooks] = useState<main.Textbook[]>([]);
     const [storedSchedules, setStoredSchedules] = useState<ScheduleItem[]>(() => getStoredSchedule());
+    const [planList, setPlanList] = useState<main.WeeklyPlanSummary[]>([]);
+
+    const fetchPlanList = async () => {
+        try {
+            const list = await GetWeeklyPlanList();
+            if (list) setPlanList(list);
+        } catch (e) {
+            console.error("Failed to fetch weekly plan list:", e);
+        }
+    };
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchPlanList();
+        }
+    }, [isOpen, watchFolder]);
+
+    useEffect(() => {
+        const handleListChanged = () => {
+            fetchPlanList();
+        };
+        EventsOn('weekly-plans-list-changed', handleListChanged);
+        return () => {
+            EventsOff('weekly-plans-list-changed');
+        };
+    }, []);
+
+    const currentPlanIndex = useMemo(() => {
+        if (!effectivePlan || planList.length === 0) return -1;
+        return planList.findIndex(p => 
+            (effectivePlan.filePath && p.filePath === effectivePlan.filePath) ||
+            p.title === effectivePlan.title
+        );
+    }, [effectivePlan, planList]);
+
+    const hasPrevPlan = currentPlanIndex > 0;
+    const hasNextPlan = currentPlanIndex >= 0 && currentPlanIndex < planList.length - 1;
+    const isViewingTodayPlan = useMemo(() => {
+        if (currentPlanIndex >= 0 && planList[currentPlanIndex]) {
+            return Boolean(planList[currentPlanIndex].isCurrent);
+        }
+        if (effectivePlan?.startDate && effectivePlan?.endDate) {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            return todayStr >= effectivePlan.startDate && todayStr <= effectivePlan.endDate;
+        }
+        return false;
+    }, [currentPlanIndex, planList, effectivePlan]);
+
+    const handleSelectPlan = async (filePath: string) => {
+        if (!filePath || isLoading) return;
+        setIsLoading(true);
+        try {
+            const res = await GetWeeklyPlanByPath(filePath);
+            if (res && res.success) {
+                onPlanUpdated(res);
+            }
+        } catch (e: any) {
+            console.error("Failed to load plan by path:", e);
+            alert(`주학습계획안을 불러오는 중 오류가 발생했습니다: ${e.message || e}`);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handlePrevPlan = () => {
+        if (hasPrevPlan) {
+            handleSelectPlan(planList[currentPlanIndex - 1].filePath);
+        }
+    };
+
+    const handleNextPlan = () => {
+        if (hasNextPlan) {
+            handleSelectPlan(planList[currentPlanIndex + 1].filePath);
+        }
+    };
+
+    const handleTodayPlan = () => {
+        const todayPlan = planList.find(p => p.isCurrent);
+        if (todayPlan) {
+            handleSelectPlan(todayPlan.filePath);
+        } else if (planList.length > 0) {
+            handleSelectPlan(planList[0].filePath);
+        }
+    };
 
     useEffect(() => {
         const updateScheds = () => {
@@ -441,8 +540,9 @@ function WeeklyPlanScheduleModalContent({
             matchedBookId: isMorning ? 'blank' : (availableBooks.length > 0 ? availableBooks[0].id : ''),
             startPage: isMorning ? 0 : 1,
             pageStr: '',
-            topic: isMorning ? (DEFAULT_MORNING_TOPICS[targetDay] || '아침 자율 독서 및 활동') : '',
-            isBlankScreen: isMorning
+            topic: isMorning ? DEFAULT_MORNING_TOPIC : '',
+            isBlankScreen: isMorning,
+            applyToAllDays: isMorning
         });
     };
 
@@ -459,8 +559,27 @@ function WeeklyPlanScheduleModalContent({
             matchedBookId: itm.matchedBookId || (isBlank ? 'blank' : (availableBooks.length > 0 ? availableBooks[0].id : '')),
             startPage: isBlank ? 0 : (itm.startPage || 1),
             pageStr: itm.pageStr || (itm.startPage ? `${itm.startPage}쪽` : ''),
-            topic: itm.topic || (isMorning ? (DEFAULT_MORNING_TOPICS[targetDay] || '아침 자율 독서 및 활동') : ''),
-            isBlankScreen: isBlank
+            topic: itm.topic || (isMorning ? DEFAULT_MORNING_TOPIC : ''),
+            isBlankScreen: isBlank,
+            applyToAllDays: isMorning
+        });
+    };
+
+    // Quick bulk setup for morning activities across all weekdays
+    const handleOpenMorningActivityBulk = () => {
+        const sched = effectivePlan?.schedule || {};
+        const monItem = (sched['월'] || []).find(it => it.period === 0);
+        setEditingItem({
+            isNew: !monItem,
+            day: '월',
+            period: 0,
+            subject: '아침활동',
+            matchedBookId: 'blank',
+            startPage: 0,
+            pageStr: '',
+            topic: monItem?.topic || DEFAULT_MORNING_TOPIC,
+            isBlankScreen: true,
+            applyToAllDays: true
         });
     };
 
@@ -494,11 +613,9 @@ function WeeklyPlanScheduleModalContent({
         };
 
         const updatedSchedule = { ...(targetPlan.schedule || {}) };
-        const dayList = (updatedSchedule[editingItem.day] || []).filter(
-            it => (it.period !== undefined ? it.period : 1) !== Number(editingItem.period)
-        );
-
         const isMorning = Number(editingItem.period) === 0;
+        const applyToAll = isMorning && Boolean(editingItem.applyToAllDays);
+
         const newItem: main.WeeklyPlanItem = {
             period: Number(editingItem.period),
             subject: editingItem.subject.trim() || (isMorning ? "아침활동" : (editingItem.isBlankScreen ? "활동" : "수업")),
@@ -510,9 +627,15 @@ function WeeklyPlanScheduleModalContent({
             raw: `${editingItem.subject} ${editingItem.topic}`
         };
 
-        dayList.push(newItem);
-        dayList.sort((a, b) => (a.period !== undefined ? a.period : 0) - (b.period !== undefined ? b.period : 0));
-        updatedSchedule[editingItem.day] = dayList;
+        const targetDays = applyToAll ? DAY_LABELS : [editingItem.day];
+        for (const d of targetDays) {
+            const dayList = (updatedSchedule[d] || []).filter(
+                it => (it.period !== undefined ? it.period : 1) !== Number(editingItem.period)
+            );
+            dayList.push({ ...newItem });
+            dayList.sort((a, b) => (a.period !== undefined ? a.period : 0) - (b.period !== undefined ? b.period : 0));
+            updatedSchedule[d] = dayList;
+        }
 
         const updatedPlan: main.WeeklyPlanResult = {
             ...targetPlan,
@@ -602,9 +725,22 @@ function WeeklyPlanScheduleModalContent({
                                 <Calendar className="w-6 h-6" />
                             </div>
                             <div>
-                                <h2 className="text-lg sm:text-xl font-extrabold text-slate-800">
-                                    {effectivePlan?.title || "주학습 계획안"}
-                                </h2>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h2 className="text-lg sm:text-xl font-extrabold text-slate-800">
+                                        {effectivePlan?.title || "주학습 계획안"}
+                                    </h2>
+                                    {effectivePlan?.weekRange && (
+                                        <span className="px-2.5 py-0.5 bg-violet-100 text-violet-700 text-xs font-bold rounded-lg border border-violet-200">
+                                            {effectivePlan.weekRange}
+                                        </span>
+                                    )}
+                                    {isViewingTodayPlan && (
+                                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-extrabold rounded-md flex items-center gap-1 border border-emerald-300">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                            이번 주 (오늘 기준)
+                                        </span>
+                                    )}
+                                </div>
                                 <p className="text-xs text-slate-400">
                                     주간 시간표를 한눈에 확인하고 교과서 또는 빈 화면 활동 수업으로 바로 이동할 수 있습니다.
                                 </p>
@@ -671,6 +807,75 @@ function WeeklyPlanScheduleModalContent({
                         </div>
                     </div>
 
+                    {/* Week Navigation Toolbar (이전 주안 / 다음 주안 / 아침활동 일괄 설정 바) */}
+                    <div className="bg-slate-100 px-6 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        {/* Left: Previous / Current / Next Week Plan Buttons */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                                onClick={handlePrevPlan}
+                                disabled={!hasPrevPlan || isLoading}
+                                className="px-3 py-1.5 bg-white hover:bg-violet-50 text-slate-700 hover:text-violet-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-slate-700 rounded-xl font-bold flex items-center gap-1.5 border border-slate-300 shadow-2xs transition-all cursor-pointer disabled:cursor-not-allowed"
+                                title="이전 주차 주학습계획안으로 이동"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                                <span>이전 주안</span>
+                            </button>
+
+                            <button
+                                onClick={handleTodayPlan}
+                                disabled={isLoading}
+                                className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border shadow-2xs transition-all cursor-pointer ${
+                                    isViewingTodayPlan
+                                        ? 'bg-emerald-600 text-white border-emerald-600'
+                                        : 'bg-white hover:bg-emerald-50 text-emerald-700 border-slate-300'
+                                }`}
+                                title="오늘(이번 주) 주학습계획안으로 바로 이동"
+                            >
+                                <Calendar className="w-3.5 h-3.5" />
+                                <span>이번 주 (오늘)</span>
+                            </button>
+
+                            <button
+                                onClick={handleNextPlan}
+                                disabled={!hasNextPlan || isLoading}
+                                className="px-3 py-1.5 bg-white hover:bg-violet-50 text-slate-700 hover:text-violet-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-slate-700 rounded-xl font-bold flex items-center gap-1.5 border border-slate-300 shadow-2xs transition-all cursor-pointer disabled:cursor-not-allowed"
+                                title="다음 주차 주학습계획안으로 이동"
+                            >
+                                <span>다음 주안</span>
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+
+                            {/* Dropdown Selector for All Available Weeks */}
+                            {planList.length > 0 && (
+                                <select
+                                    value={effectivePlan?.filePath || ''}
+                                    onChange={(e) => handleSelectPlan(e.target.value)}
+                                    disabled={isLoading}
+                                    className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-700 text-xs focus:ring-2 focus:ring-violet-500 cursor-pointer shadow-2xs max-w-[220px] truncate"
+                                    title="원하는 주차의 계획안으로 바로 이동"
+                                >
+                                    {planList.map((p, idx) => (
+                                        <option key={p.filePath || idx} value={p.filePath}>
+                                            {p.title} {p.isCurrent ? '★ (이번 주)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+
+                        {/* Right: Morning Activity Bulk Setup Button */}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleOpenMorningActivityBulk}
+                                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-xl font-bold flex items-center gap-1.5 border border-amber-300 shadow-2xs transition-colors cursor-pointer"
+                                title="월~금 모든 요일의 아침활동을 동일하게 일괄 등록하거나 개별 설정합니다"
+                            >
+                                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                <span>아침활동 일괄 설정</span>
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Sub Control Bar: Watch folder & File upload */}
                     <div className="bg-slate-100/80 px-6 py-2 border-b border-slate-200/60 flex flex-wrap items-center justify-between gap-3 text-xs">
                         <div className="flex items-center gap-2 text-slate-600 truncate max-w-xs sm:max-w-md">
@@ -716,6 +921,8 @@ function WeeklyPlanScheduleModalContent({
                                 {DAY_LABELS.map((day) => {
                                     const count = getSanitizedDayItems(day).length;
                                     const isSelected = selectedDay === day;
+                                    const dateStr = effectivePlan?.weekDates?.[day];
+                                    const dateLabel = formatDayDate(dateStr);
                                     return (
                                         <button
                                             key={day}
@@ -729,7 +936,7 @@ function WeeklyPlanScheduleModalContent({
                                                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                                             }`}
                                         >
-                                            <span>{day}요일</span>
+                                            <span>{day}요일{dateLabel ? ` (${dateLabel})` : ''}</span>
                                             {count > 0 && (
                                                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                                                     isSelected ? "bg-white/30 text-white" : "bg-slate-200 text-slate-600"
@@ -905,6 +1112,25 @@ function WeeklyPlanScheduleModalContent({
                                     />
                                 </div>
 
+                                {editingItem.period === 0 && (
+                                    <div className="mb-4 p-3 bg-violet-50/90 border border-violet-200 rounded-2xl flex items-center justify-between">
+                                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={editingItem.applyToAllDays !== false}
+                                                onChange={(e) => setEditingItem({ ...editingItem, applyToAllDays: e.target.checked })}
+                                                className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 cursor-pointer"
+                                            />
+                                            <span className="text-xs font-bold text-violet-900">
+                                                월~금 모든 요일에 동일하게 일괄 적용
+                                            </span>
+                                        </label>
+                                        <span className="text-[11px] font-bold text-violet-600">
+                                            {editingItem.applyToAllDays !== false ? "모든 요일 일괄 적용" : `${editingItem.day}요일만 개별 수정`}
+                                        </span>
+                                    </div>
+                                )}
+
                                 {/* Action Buttons */}
                                 <div className="flex items-center justify-end gap-2">
                                     <button
@@ -944,13 +1170,22 @@ function WeeklyPlanScheduleModalContent({
                                                 <th className="w-16 py-3 px-2 text-center text-slate-500 font-extrabold border-r border-slate-200/80">교시</th>
                                                 {DAY_LABELS.map(day => {
                                                     const count = getSanitizedDayItems(day).length;
+                                                    const dateStr = effectivePlan?.weekDates?.[day];
+                                                    const dateLabel = formatDayDate(dateStr);
                                                     return (
-                                                        <th key={day} className="py-3 px-3 text-center border-r last:border-r-0 border-slate-200/80">
-                                                            <div className="flex items-center justify-center gap-1.5">
-                                                                <span className="font-black text-sm text-slate-800">{day}요일</span>
-                                                                {count > 0 && (
-                                                                    <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-violet-100 text-violet-700">
-                                                                        {count}
+                                                        <th key={day} className="py-2.5 px-3 text-center border-r last:border-r-0 border-slate-200/80">
+                                                            <div className="flex flex-col items-center justify-center gap-0.5">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="font-black text-sm text-slate-800">{day}요일</span>
+                                                                    {count > 0 && (
+                                                                        <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-violet-100 text-violet-700">
+                                                                            {count}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {dateLabel && (
+                                                                    <span className="text-[11px] font-bold text-slate-400">
+                                                                        {dateLabel}
                                                                     </span>
                                                                 )}
                                                             </div>

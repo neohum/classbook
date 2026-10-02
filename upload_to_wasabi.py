@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "대용량 PDF 초고속 변환, 좌우 막대 진행률 애니메이션 및 메모리 부족(STATUS_BREAKPOINT) 해결 (v1.2.23)"
+    notes = "주학습 계획안 날짜 기준 자동 선택, 이전/다음 주안 이동 네비게이션, 아침활동 일괄/개별 편집 및 요일별 날짜 표시 (v1.2.24)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

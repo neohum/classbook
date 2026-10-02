@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import re
+import datetime
 import zipfile
 import zlib
 import xml.etree.ElementTree as ET
@@ -1125,7 +1126,79 @@ def merge_period_items(items):
         'raw': ' '.join(raw_parts)
     }
 
-def sanitize_result(res):
+def extract_plan_dates(filepath, doc_title, text_content=""):
+    """
+    Extracts start date, end date, week range, and daily date mappings.
+    Looks in filename first, then doc title, then text_content.
+    """
+    candidates = [
+        os.path.basename(filepath),
+        doc_title,
+        text_content
+    ]
+    
+    # 1. YYYY.MM.DD.~YYYY.MM.DD. (or with - or / and optional dots)
+    for txt in candidates:
+        if not txt:
+            continue
+        m = re.search(r'(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})\.?\s*[~∼\-]\s*(?:(\d{4})[.\-/])?(\d{1,2})[.\-/](\d{1,2})\.?', txt)
+        if m:
+            y1, m1, d1 = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            y2 = int(m.group(4)) if m.group(4) else y1
+            m2, d2 = int(m.group(5)), int(m.group(6))
+            try:
+                d_start = datetime.date(y1, m1, d1)
+                d_end = datetime.date(y2, m2, d2)
+                return format_dates_result(d_start, d_end)
+            except ValueError:
+                pass
+
+    # 2. MM.DD.~MM.DD. or M월 D일 ~ M월 D일
+    curr_year = datetime.date.today().year
+    for txt in candidates:
+        if not txt:
+            continue
+        m = re.search(r'(\d{1,2})[월.\-/](\d{1,2})일?\.?\s*[~∼\-]\s*(\d{1,2})[월.\-/](\d{1,2})일?\.?', txt)
+        if m:
+            m1, d1 = int(m.group(1)), int(m.group(2))
+            m2, d2 = int(m.group(3)), int(m.group(4))
+            try:
+                d_start = datetime.date(curr_year, m1, d1)
+                d_end = datetime.date(curr_year, m2, d2)
+                return format_dates_result(d_start, d_end)
+            except ValueError:
+                pass
+
+    return {
+        "startDate": "",
+        "endDate": "",
+        "weekRange": "",
+        "weekDates": {}
+    }
+
+def format_dates_result(d_start, d_end):
+    start_str = d_start.strftime("%Y-%m-%d")
+    end_str = d_end.strftime("%Y-%m-%d")
+    week_range = f"{d_start.strftime('%Y.%m.%d.')} ~ {d_end.strftime('%Y.%m.%d.')}"
+    
+    # Calculate Monday - Friday dates
+    mon_offset = d_start.weekday() # 0 is Monday
+    monday = d_start - datetime.timedelta(days=mon_offset)
+    
+    day_labels = ['월', '화', '수', '목', '금']
+    week_dates = {}
+    for i, d in enumerate(day_labels):
+        day_date = monday + datetime.timedelta(days=i)
+        week_dates[d] = day_date.strftime("%Y-%m-%d")
+        
+    return {
+        "startDate": start_str,
+        "endDate": end_str,
+        "weekRange": week_range,
+        "weekDates": week_dates
+    }
+
+def sanitize_result(res, filepath=""):
     if not res or not res.get("success"):
         return res
     sched = res.get("schedule", {})
@@ -1151,6 +1224,16 @@ def sanitize_result(res):
         new_sched[day] = merged_day
 
     res["schedule"] = new_sched
+
+    # Extract and populate date information
+    if filepath:
+        res["filePath"] = filepath
+        date_info = extract_plan_dates(filepath, res.get("title", ""))
+        res["startDate"] = date_info["startDate"]
+        res["endDate"] = date_info["endDate"]
+        res["weekRange"] = date_info["weekRange"]
+        res["weekDates"] = date_info["weekDates"]
+
     return res
 
 def parse_file(filepath):
@@ -1159,7 +1242,7 @@ def parse_file(filepath):
         try:
             hwpml_res = parse_hwpml(filepath)
             if hwpml_res is not None and hwpml_res.get("success"):
-                return sanitize_result(hwpml_res)
+                return sanitize_result(hwpml_res, filepath)
         except Exception:
             pass
 
@@ -1167,16 +1250,16 @@ def parse_file(filepath):
     try:
         rhwp_res = parse_with_rhwp(filepath)
         if rhwp_res is not None and rhwp_res.get("success"):
-            return sanitize_result(rhwp_res)
+            return sanitize_result(rhwp_res, filepath)
     except Exception:
         pass
 
     # 2. Fallback to existing parsers
     ext = os.path.splitext(filepath)[1].lower()
     if ext == '.hwpx':
-        return sanitize_result(parse_hwpx(filepath))
+        return sanitize_result(parse_hwpx(filepath), filepath)
     elif ext == '.hwp':
-        return sanitize_result(parse_hwp(filepath))
+        return sanitize_result(parse_hwp(filepath), filepath)
     else:
         raise ValueError(f"Unsupported file format: {ext}")
 

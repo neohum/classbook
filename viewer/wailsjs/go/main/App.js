@@ -54,6 +54,14 @@ export function GetWatchFolder() {
   return window['go']['main']['App']['GetWatchFolder']();
 }
 
+export function GetWeeklyPlanByPath(arg1) {
+  return window['go']['main']['App']['GetWeeklyPlanByPath'](arg1);
+}
+
+export function GetWeeklyPlanList() {
+  return window['go']['main']['App']['GetWeeklyPlanList']();
+}
+
 export function GetWeeklyPlanRawBase64(arg1) {
   return window['go']['main']['App']['GetWeeklyPlanRawBase64'](arg1);
 }
