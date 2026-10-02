@@ -1,9 +1,9 @@
 {
-  "version": "1.2.19",
+  "version": "1.2.20",
   "releaseDate": "2026-09-30",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.19/classbook-setup-v1.2.19.exe",
-  "installerName": "classbook-setup-v1.2.19.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.19.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20260930%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260930T070411Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fc8687114497fbb873d90d19f02e7cd09bd5581cc664087135b44cf4446c72ab",
-  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.19.exe",
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.20/classbook-setup-v1.2.20.exe",
+  "installerName": "classbook-setup-v1.2.20.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.20.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20261002%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20261002T000637Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6428fd7ee934326ce4099f17ff753955c572b288c4dd6bb2317927745504b5e5",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.20.exe",
   "notes": "시종 시간 직접 입력 자동 저장 및 시간순 정렬, 시간표/알림 영구 동기화 개선 (v1.2.19)"
 }

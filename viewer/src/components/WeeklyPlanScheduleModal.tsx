@@ -30,6 +30,14 @@ interface Props {
 
 const DAY_LABELS = ['월', '화', '수', '목', '금'];
 
+export const DEFAULT_MORNING_TOPICS: Record<string, string> = {
+    '월': '아침 독서 및 한 주 열기',
+    '화': '아침 건강활동 및 자율독서',
+    '수': '사제동행 아침 독서',
+    '목': '학급 자치활동 및 아침글쓰기',
+    '금': '주간 돌아보기 및 자유 독서'
+};
+
 interface EditFormState {
     isNew: boolean;
     day: string;
@@ -101,12 +109,24 @@ function WeeklyPlanScheduleModalContent({
     const schedulePeriods = useMemo(() => {
         const periodMap = new Map<number, { period: number; name: string; time: string }>();
 
+        // Always ensure period 0 (아침활동) exists at the top
+        const morningSched = storedSchedules.find(s => s.period === 0 || s.name.includes('아침'));
+        const morningTimeStr = morningSched 
+            ? ((morningSched.startTime && morningSched.endTime) ? `${morningSched.startTime}~${morningSched.endTime}` : (morningSched.startTime || '')) 
+            : '08:40~09:00';
+        periodMap.set(0, {
+            period: 0,
+            name: morningSched?.name || '아침활동',
+            time: morningTimeStr
+        });
+
         storedSchedules.forEach((s, idx) => {
-            const p = s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (idx + 1));
+            const isMorning = s.period === 0 || s.name.includes('아침');
+            const p = isMorning ? 0 : (s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (idx + 1)));
             const timeStr = (s.startTime && s.endTime) ? `${s.startTime}~${s.endTime}` : (s.startTime || '');
             periodMap.set(p, {
                 period: p,
-                name: s.name || `${p}교시`,
+                name: s.name || (p === 0 ? '아침활동' : `${p}교시`),
                 time: timeStr
             });
         });
@@ -119,7 +139,7 @@ function WeeklyPlanScheduleModalContent({
                     if (!periodMap.has(p)) {
                         periodMap.set(p, {
                             period: p,
-                            name: `${p}교시`,
+                            name: p === 0 ? '아침활동' : `${p}교시`,
                             time: ''
                         });
                     }
@@ -128,7 +148,7 @@ function WeeklyPlanScheduleModalContent({
         }
 
         // Fallback default: ensure at least periods 1 to 6 exist if empty
-        if (periodMap.size === 0) {
+        if (periodMap.size <= 1) {
             [1, 2, 3, 4, 5, 6].forEach(p => {
                 periodMap.set(p, { period: p, name: `${p}교시`, time: '' });
             });
@@ -217,7 +237,6 @@ function WeeklyPlanScheduleModalContent({
     // Helper: get sanitized list for a given day
     const getSanitizedDayItems = (day: string): main.WeeklyPlanItem[] => {
         const rawItems = effectivePlan?.schedule ? effectivePlan.schedule[day] || [] : [];
-        if (!rawItems || rawItems.length === 0) return [];
 
         const grouped = new Map<number, main.WeeklyPlanItem[]>();
         for (const itm of rawItems) {
@@ -227,6 +246,22 @@ function WeeklyPlanScheduleModalContent({
         }
 
         const mergedList: main.WeeklyPlanItem[] = [];
+
+        // Always ensure morning activity (period 0) is present for all weekdays
+        if (!grouped.has(0)) {
+            const defaultTopic = DEFAULT_MORNING_TOPICS[day] || '아침 자율 독서 및 활동';
+            mergedList.push({
+                period: 0,
+                subject: '아침활동',
+                matchedBookId: 'blank',
+                startPage: 0,
+                endPage: 0,
+                pageStr: '',
+                topic: defaultTopic,
+                raw: `아침활동 ${defaultTopic}`
+            });
+        }
+
         const sortedPeriods = Array.from(grouped.keys()).sort((a, b) => a - b);
 
         for (const p of sortedPeriods) {
@@ -247,7 +282,7 @@ function WeeklyPlanScheduleModalContent({
                     if (s) { bestSubject = s; break; }
                 }
             }
-            if (!bestSubject) bestSubject = '학습';
+            if (!bestSubject) bestSubject = p === 0 ? '아침활동' : '학습';
 
             let bestBookId = '';
             for (const itm of list) {
@@ -288,7 +323,7 @@ function WeeklyPlanScheduleModalContent({
                     const t = (itm.topic || '').trim();
                     if (t && !/^\d+[\s~-]+\d+.*$/.test(t)) { bestTopic = t; break; }
                 }
-                if (!bestTopic) bestTopic = bestSubject;
+                if (!bestTopic) bestTopic = p === 0 ? (DEFAULT_MORNING_TOPICS[day] || '아침 자율 독서 및 활동') : bestSubject;
             }
 
             mergedList.push({
@@ -303,6 +338,7 @@ function WeeklyPlanScheduleModalContent({
             });
         }
 
+        mergedList.sort((a, b) => (a.period !== undefined ? a.period : 0) - (b.period !== undefined ? b.period : 0));
         return mergedList;
     };
 
@@ -312,36 +348,38 @@ function WeeklyPlanScheduleModalContent({
 
     // Open item editor for adding
     const handleStartAdd = (targetDay: string = selectedDay, targetPeriod?: number) => {
+        const isMorning = targetPeriod === 0;
         const dayItems = getSanitizedDayItems(targetDay);
         const nextPeriod = targetPeriod !== undefined ? targetPeriod : (dayItems.length > 0 
             ? Math.max(...dayItems.map(i => i.period !== undefined ? i.period : 0)) + 1 
-            : (schedulePeriods.length > 0 ? schedulePeriods[0].period : 1));
+            : 1);
         setEditingItem({
             isNew: true,
             day: targetDay,
             period: nextPeriod,
-            subject: '창체',
-            matchedBookId: availableBooks.length > 0 ? availableBooks[0].id : '',
-            startPage: 1,
+            subject: isMorning ? '아침활동' : '창체',
+            matchedBookId: isMorning ? 'blank' : (availableBooks.length > 0 ? availableBooks[0].id : ''),
+            startPage: isMorning ? 0 : 1,
             pageStr: '',
-            topic: '',
-            isBlankScreen: false
+            topic: isMorning ? (DEFAULT_MORNING_TOPICS[targetDay] || '아침 자율 독서 및 활동') : '',
+            isBlankScreen: isMorning
         });
     };
 
     // Open item editor for editing
     const handleStartEdit = (targetDay: string, idx: number, itm: main.WeeklyPlanItem) => {
-        const isBlank = itm.matchedBookId === 'blank' || (!itm.matchedBookId && !itm.startPage && !itm.pageStr);
+        const isMorning = itm.period === 0;
+        const isBlank = isMorning || itm.matchedBookId === 'blank' || (!itm.matchedBookId && !itm.startPage && !itm.pageStr);
         setEditingItem({
             isNew: false,
             day: targetDay,
             index: idx,
             period: itm.period !== undefined ? itm.period : (idx + 1),
-            subject: itm.subject || (isBlank ? '활동' : '국어'),
-            matchedBookId: itm.matchedBookId || (availableBooks.length > 0 ? availableBooks[0].id : ''),
-            startPage: itm.startPage || 1,
+            subject: itm.subject || (isMorning ? '아침활동' : (isBlank ? '활동' : '국어')),
+            matchedBookId: itm.matchedBookId || (isBlank ? 'blank' : (availableBooks.length > 0 ? availableBooks[0].id : '')),
+            startPage: isBlank ? 0 : (itm.startPage || 1),
             pageStr: itm.pageStr || (itm.startPage ? `${itm.startPage}쪽` : ''),
-            topic: itm.topic || '',
+            topic: itm.topic || (isMorning ? (DEFAULT_MORNING_TOPICS[targetDay] || '아침 자율 독서 및 활동') : ''),
             isBlankScreen: isBlank
         });
     };
@@ -377,12 +415,13 @@ function WeeklyPlanScheduleModalContent({
 
         const updatedSchedule = { ...(targetPlan.schedule || {}) };
         const dayList = (updatedSchedule[editingItem.day] || []).filter(
-            it => it.period !== Number(editingItem.period)
+            it => (it.period !== undefined ? it.period : 1) !== Number(editingItem.period)
         );
 
+        const isMorning = Number(editingItem.period) === 0;
         const newItem: main.WeeklyPlanItem = {
             period: Number(editingItem.period),
-            subject: editingItem.subject.trim() || (editingItem.isBlankScreen ? "활동" : "수업"),
+            subject: editingItem.subject.trim() || (isMorning ? "아침활동" : (editingItem.isBlankScreen ? "활동" : "수업")),
             matchedBookId: editingItem.isBlankScreen ? "blank" : editingItem.matchedBookId,
             startPage: editingItem.isBlankScreen ? 0 : Number(editingItem.startPage || 1),
             endPage: editingItem.isBlankScreen ? 0 : Number(editingItem.startPage || 1),
@@ -642,8 +681,8 @@ function WeeklyPlanScheduleModalContent({
                                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-violet-200/70">
                                     <span className="font-extrabold text-base text-violet-900">
                                         {editingItem.isNew 
-                                            ? `[${editingItem.day}요일 ${editingItem.period}교시] 새 수업/활동 등록` 
-                                            : `[${editingItem.day}요일 ${editingItem.period}교시] 수업 내용 수정`}
+                                            ? `[${editingItem.day}요일 ${editingItem.period === 0 ? '아침활동' : `${editingItem.period}교시`}] 새 수업/활동 등록` 
+                                            : `[${editingItem.day}요일 ${editingItem.period === 0 ? '아침활동' : `${editingItem.period}교시`}] 활동 내용 수정`}
                                     </span>
 
                                     {/* Mode Toggle: 교과서 vs 빈화면 */}
@@ -687,7 +726,7 @@ function WeeklyPlanScheduleModalContent({
                                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500"
                                         >
                                             {schedulePeriods.map(({ period: p, name, time }) => (
-                                                <option key={p} value={p}>{name} {time ? `(${time})` : ''}</option>
+                                                <option key={p} value={p}>{p === 0 ? '아침활동' : name} {time ? `(${time})` : ''}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -844,8 +883,8 @@ function WeeklyPlanScheduleModalContent({
                                                     {/* 교시 Label */}
                                                     <td className="py-2.5 px-2 text-center font-black text-violet-700 bg-slate-50/80 border-r border-slate-200/80 select-none">
                                                         <div className="flex flex-col items-center">
-                                                            <span className="text-xs sm:text-sm font-extrabold text-violet-900 leading-tight">
-                                                                {name}
+                                                            <span className={`text-xs sm:text-sm font-extrabold leading-tight ${period === 0 ? 'text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-lg border border-amber-300/60' : 'text-violet-900'}`}>
+                                                                {period === 0 ? '아침활동' : name}
                                                             </span>
                                                             {time && (
                                                                 <span className="text-[10px] text-slate-400 font-mono font-medium tracking-tight mt-0.5">
@@ -969,10 +1008,18 @@ function WeeklyPlanScheduleModalContent({
                                             >
                                                 <div className="flex items-center gap-3.5 min-w-0">
                                                     {/* 교시 뱃지 */}
-                                                    <div className="w-11 h-11 bg-slate-50 group-hover:bg-white rounded-xl shadow-xs border border-slate-200 group-hover:border-violet-300 flex flex-col items-center justify-center shrink-0 transition-colors">
-                                                        <span className="text-[10px] text-slate-400 font-bold leading-none">교시</span>
-                                                        <span className="text-base font-black text-violet-600 leading-none mt-0.5">
-                                                            {item.period}
+                                                    <div className={`w-11 h-11 rounded-xl shadow-xs border flex flex-col items-center justify-center shrink-0 transition-colors ${
+                                                        item.period === 0
+                                                            ? 'bg-amber-50 group-hover:bg-amber-100/70 border-amber-300'
+                                                            : 'bg-slate-50 group-hover:bg-white border-slate-200 group-hover:border-violet-300'
+                                                    }`}>
+                                                        <span className={`text-[10px] font-bold leading-none ${item.period === 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                                                            {item.period === 0 ? "활동" : "교시"}
+                                                        </span>
+                                                        <span className={`text-base font-black leading-none mt-0.5 ${
+                                                            item.period === 0 ? "text-amber-700 text-xs" : "text-violet-600"
+                                                        }`}>
+                                                            {item.period === 0 ? "아침" : item.period}
                                                         </span>
                                                     </div>
 

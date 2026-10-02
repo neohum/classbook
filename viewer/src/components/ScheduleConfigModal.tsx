@@ -16,6 +16,7 @@ export interface ScheduleItem {
 }
 
 export const DEFAULT_SCHEDULE: ScheduleItem[] = [
+    { id: '0', period: 0, name: '아침활동', startTime: '08:40', endTime: '09:00', startMessage: '아침활동 시간입니다. 하루를 활기차게 시작해요!', restMessage: '1교시 수업 준비 시간입니다' },
     { id: '1', period: 1, name: '1교시', startTime: '09:00', endTime: '09:40', startMessage: '1교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
     { id: '2', period: 2, name: '2교시', startTime: '09:50', endTime: '10:30', startMessage: '2교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
     { id: '3', period: 3, name: '3교시', startTime: '10:40', endTime: '11:20', startMessage: '3교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
@@ -29,7 +30,15 @@ export function getStoredSchedule(): ScheduleItem[] {
         const saved = localStorage.getItem('classbook_schedule_v3');
         if (saved) {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                return parsed.map((item: ScheduleItem) => {
+                    const isMorning = item.name.includes('아침') || (item.startTime && item.startTime < '09:00' && (!item.period || item.period === 0 || item.period > 6));
+                    if (isMorning) {
+                        return { ...item, period: 0 };
+                    }
+                    return item;
+                });
+            }
         }
     } catch (e) { }
     return DEFAULT_SCHEDULE;
@@ -134,9 +143,10 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
 
         // Critical: If the user opened the form and entered start/end times but forgot to click "추가" before clicking "저장 및 닫기", auto-commit!
         if (showAddForm && newStartTime && newEndTime) {
+            const isMorning = newName.includes('아침') || (newStartTime && newStartTime < '09:00');
             const parsedNum = parseInt(newName.replace(/[^0-9]/g, ''), 10);
-            const periodNum = !isNaN(parsedNum) ? parsedNum : (schedulesToSave.length + 1);
-            const name = newName.trim() || `${periodNum}교시`;
+            const periodNum = isMorning ? 0 : (!isNaN(parsedNum) ? parsedNum : (schedulesToSave.length + 1));
+            const name = newName.trim() || (isMorning ? '아침활동' : `${periodNum}교시`);
             const newId = Math.random().toString(36).substring(2, 9);
             const newItem: ScheduleItem = {
                 id: newId,
@@ -159,7 +169,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
     };
 
     const handleReset = () => {
-        if (window.confirm("시종 시간표와 알림 문구를 기본값(1~6교시)으로 복원하시겠습니까?")) {
+        if (window.confirm("시종 시간표와 알림 문구를 기본값(아침활동 + 1~6교시)으로 복원하시겠습니까?")) {
             setLocalSchedules(DEFAULT_SCHEDULE);
             saveStoredSchedule(DEFAULT_SCHEDULE);
         }
@@ -191,9 +201,10 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
             alert("시작 시간과 종료 시간을 입력해주세요.");
             return;
         }
+        const isMorning = newName.includes('아침') || (newStartTime && newStartTime < '09:00');
         const parsedNum = parseInt(newName.replace(/[^0-9]/g, ''), 10);
-        const periodNum = !isNaN(parsedNum) ? parsedNum : (localSchedules.length + 1);
-        const name = newName.trim() || `${periodNum}교시`;
+        const periodNum = isMorning ? 0 : (!isNaN(parsedNum) ? parsedNum : (localSchedules.length + 1));
+        const name = newName.trim() || (isMorning ? '아침활동' : `${periodNum}교시`);
         const newId = Math.random().toString(36).substring(2, 9);
         const newItem: ScheduleItem = {
             id: newId,
@@ -509,8 +520,12 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                             </div>
 
                                             {/* Order Number Badge */}
-                                            <span className="w-7 h-7 rounded-xl bg-violet-600/30 text-violet-300 font-black text-xs flex items-center justify-center border border-violet-500/30 shrink-0">
-                                                {idx + 1}
+                                            <span className={`w-8 h-7 px-1 rounded-xl font-black text-xs flex items-center justify-center border shrink-0 ${
+                                                schedule.period === 0 || schedule.name.includes('아침')
+                                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 text-[11px]'
+                                                    : 'bg-violet-600/30 text-violet-300 border-violet-500/30'
+                                            }`}>
+                                                {schedule.period === 0 || schedule.name.includes('아침') ? '아침' : (schedule.period !== undefined ? schedule.period : (idx + 1))}
                                             </span>
 
                                             {/* Name Input */}

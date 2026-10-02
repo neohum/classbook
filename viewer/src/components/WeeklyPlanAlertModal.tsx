@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, X, ArrowRight, Clock, Sparkles, Coffee, Check } from 'lucide-react';
+import { BookOpen, X, ArrowRight, Clock, Sparkles, Coffee, Check, Square } from 'lucide-react';
 import { main } from '../../wailsjs/go/models';
 
 interface Props {
@@ -151,14 +151,27 @@ export default function WeeklyPlanAlertModal({
 
                 {/* Bottom Action Buttons (Large & Clear) */}
                 <div className="pt-6 border-t border-slate-700/60 mt-4 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
-                    {/* Primary Button: 교과서 열기 or 수업 시작 */}
+                    {/* Primary Button: 교과서 열기 or 활동 화면 열기 */}
                     {!isRestTime && hasBookTarget ? (
                         <button
                             onClick={handleConfirmAndGo}
-                            className="w-full sm:w-auto flex-1 max-w-md py-4 sm:py-5 px-8 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black text-lg sm:text-2xl rounded-2xl sm:rounded-3xl shadow-xl shadow-violet-600/40 transition-all flex items-center justify-center gap-3 group cursor-pointer active:scale-98"
+                            className={`w-full sm:w-auto flex-1 max-w-md py-4 sm:py-5 px-8 ${
+                                targetBookId === 'blank' || item?.matchedBookId === 'blank' || item?.period === 0
+                                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-600/40'
+                                    : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-violet-600/40'
+                            } text-white font-black text-lg sm:text-2xl rounded-2xl sm:rounded-3xl shadow-xl transition-all flex items-center justify-center gap-3 group cursor-pointer active:scale-98`}
                         >
-                            <BookOpen className="w-6 h-6 sm:w-7 sm:h-7" />
-                            <span>교과서 열기 ({item?.pageStr || `${targetPage}쪽`})</span>
+                            {targetBookId === 'blank' || item?.matchedBookId === 'blank' || item?.period === 0 ? (
+                                <>
+                                    <Square className="w-6 h-6 sm:w-7 sm:h-7" />
+                                    <span>활동 화면 열기</span>
+                                </>
+                            ) : (
+                                <>
+                                    <BookOpen className="w-6 h-6 sm:w-7 sm:h-7" />
+                                    <span>교과서 열기 ({item?.pageStr || `${targetPage}쪽`})</span>
+                                </>
+                            )}
                             <ArrowRight className="w-6 h-6 sm:w-7 sm:h-7 group-hover:translate-x-1.5 transition-transform" />
                         </button>
                     ) : null}

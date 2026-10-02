@@ -19,7 +19,7 @@ import pdfWorkerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { detectPageNumberFromText, detectPageNumberFromCanvas } from '../utils/ocrOffsetDetector';
 import PageOffsetAdjustModal from '../components/PageOffsetAdjustModal';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
-import WeeklyPlanScheduleModal from '../components/WeeklyPlanScheduleModal';
+import WeeklyPlanScheduleModal, { DEFAULT_MORNING_TOPICS } from '../components/WeeklyPlanScheduleModal';
 import ScheduleConfigModal, { getStoredSchedule, type ScheduleItem } from '../components/ScheduleConfigModal';
 import { resolveBookForSubject } from '../utils/bookResolver';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -129,7 +129,7 @@ export default function MainPage() {
 
         for (let i = 0; i < currentSchedules.length; i++) {
             const s = currentSchedules[i];
-            const pNum = s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1));
+            const pNum = s.period !== undefined ? s.period : (s.name.includes('아침') ? 0 : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1)));
             if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                 activePeriod = pNum;
                 activeSched = s;
@@ -144,15 +144,47 @@ export default function MainPage() {
             }
         }
 
+        // If current time is early morning (< 09:00), ensure activePeriod is 0
+        if (currentTimeStr < '09:00') {
+            const morningSched = currentSchedules.find(s => s.period === 0 || s.name.includes('아침'));
+            if (morningSched) {
+                activePeriod = 0;
+                activeSched = morningSched;
+            }
+        }
+
         let targetItem = dayItems.find(it => it.period === activePeriod);
-        if (!targetItem && dayItems.length > 0) {
+        if (activePeriod === 0 && !targetItem) {
+            const defaultTopic = DEFAULT_MORNING_TOPICS[targetDay] || '아침 자율 독서 및 활동';
+            targetItem = {
+                period: 0,
+                subject: '아침활동',
+                matchedBookId: 'blank',
+                startPage: 0,
+                endPage: 0,
+                pageStr: '',
+                topic: defaultTopic,
+                raw: `아침활동 ${defaultTopic}`
+            };
+        } else if (!targetItem && dayItems.length > 0) {
             targetItem = dayItems[activePeriod - 1] || dayItems[0];
         }
 
-        const periodName = activeSched?.name || `${activePeriod}교시`;
+        const periodName = activeSched?.name || (activePeriod === 0 ? '아침활동' : `${activePeriod}교시`);
         const periodTime = activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : "";
 
         if (targetItem) {
+            if (targetItem.period === 0 || targetItem.matchedBookId === 'blank') {
+                const topicQ = targetItem.topic ? `&topic=${encodeURIComponent(targetItem.topic)}` : '';
+                const subjQ = `&subject=${encodeURIComponent(targetItem.subject || '아침활동')}`;
+                const periodQ = `&period=${encodeURIComponent(periodName)}`;
+                showToast(`주학습계획안 반영: ${targetDay}요일 ${periodName} [${targetItem.topic || targetItem.subject}] 빈 화면으로 이동합니다.`);
+                setTimeout(() => {
+                    navigate(`/viewer/blank?${topicQ ? topicQ.slice(1) : ''}${subjQ}${periodQ}`);
+                }, 600);
+                return;
+            }
+
             const targetPage = targetItem.startPage || 1;
             let currentBooks = textbooks;
             if (!currentBooks || currentBooks.length === 0) {
@@ -273,17 +305,29 @@ export default function MainPage() {
             // Check if current time matches any period start or end
             for (let i = 0; i < currentSchedules.length; i++) {
                 const sched = currentSchedules[i];
-                const schedPeriod = sched.period !== undefined ? sched.period : (parseInt(sched.name.replace(/[^0-9]/g, ''), 10) || (i + 1));
+                const schedPeriod = sched.period !== undefined ? sched.period : (sched.name.includes('아침') ? 0 : (parseInt(sched.name.replace(/[^0-9]/g, ''), 10) || (i + 1)));
 
                 if (sched.startTime === currentTimeStr) {
                     lastAlertTimeRef.current = currentTimeStr;
                     const dayItems = currentPlan.schedule[dayOfWeek] || [];
                     let foundItem = dayItems.find(it => it.period === schedPeriod);
-                    if (!foundItem && dayItems.length > 0) {
+                    if (schedPeriod === 0 && !foundItem) {
+                        const defaultTopic = DEFAULT_MORNING_TOPICS[dayOfWeek] || '아침 자율 독서 및 활동';
+                        foundItem = {
+                            period: 0,
+                            subject: '아침활동',
+                            matchedBookId: 'blank',
+                            startPage: 0,
+                            endPage: 0,
+                            pageStr: '',
+                            topic: defaultTopic,
+                            raw: `아침활동 ${defaultTopic}`
+                        };
+                    } else if (!foundItem && dayItems.length > 0) {
                         foundItem = dayItems[schedPeriod - 1] || dayItems[0];
                     }
 
-                    const periodTitle = sched.name || `${schedPeriod}교시`;
+                    const periodTitle = sched.name || (schedPeriod === 0 ? '아침활동' : `${schedPeriod}교시`);
                     setAlertPeriod(schedPeriod);
                     setAlertPeriodName(periodTitle);
                     setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
@@ -292,20 +336,29 @@ export default function MainPage() {
                     setAlertCustomMessage(sched.startMessage || `${periodTitle} 수업을 시작합니다! 자리에 앉아주세요.`);
                     setIsAlertModalOpen(true);
 
-                    // 교과서가 있는 경우에만 뷰어로 자동 이동
+                    // 교과서 또는 빈 화면 활동으로 자동 이동
                     if (foundItem) {
-                        const targetPage = foundItem.startPage || 1;
-                        let currentBooks = textbooks;
-                        if (!currentBooks || currentBooks.length === 0) {
-                            currentBooks = (await GetTextbooks()) || [];
-                        }
-                        const resolved = resolveBookForSubject(foundItem.subject, foundItem.matchedBookId, currentBooks);
-                        if (resolved) {
+                        if (foundItem.period === 0 || foundItem.matchedBookId === 'blank') {
+                            const topicQ = foundItem.topic ? `&topic=${encodeURIComponent(foundItem.topic)}` : '';
+                            const subjQ = `&subject=${encodeURIComponent(foundItem.subject || '아침활동')}`;
+                            const periodQ = `&period=${encodeURIComponent(periodTitle)}`;
                             setTimeout(() => {
-                                navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}&startAlert=true`);
+                                navigate(`/viewer/blank?${topicQ ? topicQ.slice(1) : ''}${subjQ}${periodQ}`);
                             }, 500);
                         } else {
-                            showToast(`${periodTitle} [${foundItem.subject}] 교과서가 없는 수업(자율활동 등)입니다. 알림을 표시합니다.`);
+                            const targetPage = foundItem.startPage || 1;
+                            let currentBooks = textbooks;
+                            if (!currentBooks || currentBooks.length === 0) {
+                                currentBooks = (await GetTextbooks()) || [];
+                            }
+                            const resolved = resolveBookForSubject(foundItem.subject, foundItem.matchedBookId, currentBooks);
+                            if (resolved) {
+                                setTimeout(() => {
+                                    navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}&startAlert=true`);
+                                }, 500);
+                            } else {
+                                showToast(`${periodTitle} [${foundItem.subject}] 교과서가 없는 수업(자율활동 등)입니다. 알림을 표시합니다.`);
+                            }
                         }
                     }
                     break;
@@ -523,9 +576,12 @@ export default function MainPage() {
         }
     };
 
-    const handleGoToBlank = (subject: string, topic: string, period?: number) => {
+    const handleGoToBlank = (subject: string, topic: string, period?: number | string) => {
+        const periodStr = period === 0 || period === '0' || period === '아침활동'
+            ? '아침활동'
+            : (period ? (typeof period === 'number' ? `${period}교시` : period) : '활동 수업');
         showToast(`빈 화면 [${subject || '활동 수업'}]으로 이동합니다.`);
-        navigate(`/viewer/blank?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}&period=${encodeURIComponent(period ? `${period}교시` : '활동 수업')}`);
+        navigate(`/viewer/blank?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}&period=${encodeURIComponent(periodStr)}`);
     };
 
     // Start today's class based on weekly plan and current time/period
@@ -565,12 +621,6 @@ export default function MainPage() {
         const targetDay = isWeekend ? '월' : dayOfWeek;
         const dayItems = plan.schedule[targetDay] || [];
 
-        if (dayItems.length === 0) {
-            alert(`[${targetDay}요일]에 등록된 수업 계획이 없습니다.\n[주안 미리보기]에서 수업 내용을 확인하거나 등록해주세요.`);
-            setIsScheduleModalOpen(true);
-            return;
-        }
-
         const hh = now.getHours().toString().padStart(2, '0');
         const mm = now.getMinutes().toString().padStart(2, '0');
         const currentTimeStr = `${hh}:${mm}`;
@@ -582,7 +632,7 @@ export default function MainPage() {
         if (currentSchedules.length > 0) {
             for (let i = 0; i < currentSchedules.length; i++) {
                 const s = currentSchedules[i];
-                const pNum = s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1));
+                const pNum = s.period !== undefined ? s.period : (s.name.includes('아침') ? 0 : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1)));
                 if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                     activePeriod = pNum;
                     activeSched = s;
@@ -598,8 +648,29 @@ export default function MainPage() {
             }
         }
 
+        // If current time is early morning (< 09:00), ensure activePeriod is 0 (morning activity)
+        if (currentTimeStr < '09:00') {
+            const morningSched = currentSchedules.find(s => s.period === 0 || s.name.includes('아침'));
+            if (morningSched) {
+                activePeriod = 0;
+                activeSched = morningSched;
+            }
+        }
+
         let targetItem = dayItems.find(it => it.period === activePeriod);
-        if (!targetItem && dayItems.length > 0) {
+        if (activePeriod === 0 && !targetItem) {
+            const defaultTopic = DEFAULT_MORNING_TOPICS[targetDay] || '아침 자율 독서 및 활동';
+            targetItem = {
+                period: 0,
+                subject: '아침활동',
+                matchedBookId: 'blank',
+                startPage: 0,
+                endPage: 0,
+                pageStr: '',
+                topic: defaultTopic,
+                raw: `아침활동 ${defaultTopic}`
+            };
+        } else if (!targetItem && dayItems.length > 0) {
             targetItem = dayItems[activePeriod - 1] || dayItems[0];
         }
 
@@ -607,7 +678,18 @@ export default function MainPage() {
             targetItem = dayItems[0];
         }
 
-        const periodName = activeSched?.name || `${targetItem.period || activePeriod}교시`;
+        const periodName = activeSched?.name || (targetItem.period === 0 ? '아침활동' : `${targetItem.period || activePeriod}교시`);
+
+        // If target item is morning activity (period 0) or blank screen activity, navigate directly to blank viewer
+        if (targetItem.period === 0 || targetItem.matchedBookId === 'blank') {
+            const topicQ = targetItem.topic ? `&topic=${encodeURIComponent(targetItem.topic)}` : '';
+            const subjQ = `&subject=${encodeURIComponent(targetItem.subject || '아침활동')}`;
+            const periodQ = `&period=${encodeURIComponent(periodName)}`;
+            showToast(`${isWeekend ? '[주말 대체 월요일]' : `[오늘 ${targetDay}요일]`} ${periodName} [${targetItem.topic || targetItem.subject}] 빈 화면 활동을 시작합니다.`);
+            navigate(`/viewer/blank?${topicQ ? topicQ.slice(1) : ''}${subjQ}${periodQ}`);
+            return;
+        }
+
         let currentBooks = textbooks;
         if (!currentBooks || currentBooks.length === 0) {
             try {
