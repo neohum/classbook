@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function CheckForUpdate():Promise<main.UpdateStatus>;
 
+export function ConvertPdfToBook(arg1:string,arg2:string):Promise<main.PdfConvertResult>;
+
 export function DeleteBook(arg1:string):Promise<void>;
 
 export function DeleteMultipleBooks(arg1:Array<string>):Promise<void>;

@@ -50,6 +50,21 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Serve streaming local PDF without loading entire file into memory/base64
+	if strings.HasPrefix(requestedFilename, "local_pdf") {
+		targetPdf := req.URL.Query().Get("path")
+		if targetPdf != "" && strings.EqualFold(filepath.Ext(targetPdf), ".pdf") {
+			if _, errStat := os.Stat(targetPdf); errStat == nil {
+				res.Header().Set("Content-Type", "application/pdf")
+				res.Header().Set("Accept-Ranges", "bytes")
+				http.ServeFile(res, req, targetPdf)
+				return
+			}
+		}
+		res.WriteHeader(http.StatusNotFound)
+		return
+	}
+
 	// If the request starts with "book/", serve it from the local filesystem
 	if strings.HasPrefix(requestedFilename, "book/") {
 		appDir := getAppDir()

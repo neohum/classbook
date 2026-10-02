@@ -11,7 +11,7 @@ import {
     DeleteBook, DeleteMultipleBooks, SelectMultiplePdfsDialog, ReadFileBase64, 
     EnsureBookDirWithOffset, SavePageImage, GetTextbooks, GetAppVersion,
     GetWatchFolder, SelectWatchFolderDialog, GetLatestWeeklyPlan, SelectWeeklyPlanFileDialog,
-    GetBellSchedules
+    GetBellSchedules, ConvertPdfToBook
 } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -20,6 +20,7 @@ import pdfWorkerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { detectPageNumberFromText, detectPageNumberFromCanvas } from '../utils/ocrOffsetDetector';
 import PageOffsetAdjustModal from '../components/PageOffsetAdjustModal';
 import AddBookModal from '../components/AddBookModal';
+import ConversionProgressModal from '../components/ConversionProgressModal';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal, { DEFAULT_MORNING_TOPICS } from '../components/WeeklyPlanScheduleModal';
 import ScheduleConfigModal, { 
@@ -77,8 +78,38 @@ export default function MainPage() {
 
     const [textbooks, setTextbooks] = useState<main.Textbook[]>([]);
     const [isConverting, setIsConverting] = useState(false);
-    const [convertProgress, setConvertProgress] = useState({ current: 0, total: 0, title: '', statusText: '' });
+    const [convertProgress, setConvertProgress] = useState({
+        isOpen: false,
+        current: 0,
+        total: 0,
+        percent: 0,
+        title: '',
+        statusText: '',
+        detectedOffset: null as number | string | null,
+    });
     const [appVersion, setAppVersion] = useState<string>('');
+
+    // Listen to backend conversion progress (Python fitz or image copier)
+    useEffect(() => {
+        const handleProgress = (data: any) => {
+            if (data) {
+                setConvertProgress(prev => ({
+                    ...prev,
+                    isOpen: true,
+                    current: data.current !== undefined ? data.current : prev.current,
+                    total: data.total !== undefined ? data.total : prev.total,
+                    percent: data.percent !== undefined ? data.percent : prev.percent,
+                    title: data.title || prev.title,
+                    statusText: data.statusText || prev.statusText,
+                    detectedOffset: data.detectedOffset !== undefined ? data.detectedOffset : prev.detectedOffset,
+                }));
+            }
+        };
+        EventsOn('convert-progress', handleProgress);
+        return () => {
+            EventsOff('convert-progress');
+        };
+    }, []);
 
     // Weekly Plan States
     const [watchFolder, setWatchFolder] = useState<string>('');
@@ -525,13 +556,147 @@ export default function MainPage() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isFullscreen]);
 
+    // Unified high-performance PDF converter: uses backend PyMuPDF (fitz) or streaming /local_pdf
+    const convertSinglePdf = async (pdfPath: string, customTitle?: string) => {
+        const baseFilename = pdfPath.split('\\').pop()?.split('/').pop()?.replace('.pdf', '') || '새 교과서';
+        const title = customTitle || baseFilename;
+
+        setIsConverting(true);
+        setConvertProgress({
+            isOpen: true,
+            current: 0,
+            total: 100,
+            percent: 0,
+            title,
+            statusText: '초고속 PDF 분석 엔진 준비 중...',
+            detectedOffset: null,
+        });
+
+        // 1. Try PyMuPDF (fitz) backend conversion first (Native speed, zero WebView2 memory)
+        try {
+            const result = await ConvertPdfToBook(title, pdfPath);
+            if (result && result.success) {
+                setConvertProgress(prev => ({
+                    ...prev,
+                    current: result.numPages,
+                    total: result.numPages,
+                    percent: 100,
+                    statusText: '교과서 등록 완료!',
+                    detectedOffset: result.detectedOffset,
+                }));
+
+                const updatedBooks = await GetTextbooks();
+                setTextbooks(updatedBooks);
+
+                return {
+                    id: title,
+                    title,
+                    numPages: result.numPages,
+                    initialOffset: result.detectedOffset,
+                    detectedOffset: result.detectedOffset,
+                };
+            }
+        } catch (backendErr: any) {
+            console.warn("Backend fitz conversion skipped/failed, falling back to local streaming:", backendErr);
+        }
+
+        // 2. Fallback: Streaming via HTTP without Base64 or atob
+        setConvertProgress(prev => ({
+            ...prev,
+            statusText: '로컬 스트리밍으로 PDF 분석 중...',
+        }));
+
+        const streamUrl = `/local_pdf?path=${encodeURIComponent(pdfPath)}`;
+        const loadingTask = pdfjsLib.getDocument({
+            url: streamUrl,
+            disableAutoFetch: false,
+            disableStream: false,
+        });
+
+        const pdf = await loadingTask.promise;
+        const numPages = pdf.numPages;
+
+        setConvertProgress(prev => ({
+            ...prev,
+            total: numPages,
+            statusText: '페이지 이미지 추출 및 쪽수 분석 중...',
+        }));
+
+        const scale = 1.5;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+
+        let detectedOffset: number | null = null;
+
+        for (let j = 1; j <= numPages; j++) {
+            const page = await pdf.getPage(j);
+            const viewport = page.getViewport({ scale });
+
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            if (ctx) {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport,
+                } as any;
+                await page.render(renderContext).promise;
+
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                await SavePageImage(title, j, dataUrl);
+
+                if (detectedOffset === null && j >= 4 && j <= 12) {
+                    const printedFromText = await detectPageNumberFromText(page, viewport);
+                    if (printedFromText !== null && printedFromText > 0) {
+                        detectedOffset = j - printedFromText;
+                    } else {
+                        const isEven = j % 2 === 0;
+                        const printedFromOcr = await detectPageNumberFromCanvas(canvas, isEven);
+                        if (printedFromOcr !== null && printedFromOcr > 0) {
+                            detectedOffset = j - printedFromOcr;
+                        }
+                    }
+                }
+            }
+
+            page.cleanup();
+
+            const pct = Math.round((j / numPages) * 100);
+            setConvertProgress(prev => ({
+                ...prev,
+                isOpen: true,
+                current: j,
+                total: numPages,
+                percent: pct,
+                title,
+                statusText: detectedOffset !== null ? `변환 중 (${j}/${numPages}쪽, 오프셋 감지: ${detectedOffset})` : `변환 중 (${j}/${numPages}쪽)`,
+                detectedOffset,
+            }));
+        }
+
+        const finalOffset = detectedOffset !== null ? detectedOffset : 0;
+        await EnsureBookDirWithOffset(title, numPages, finalOffset);
+
+        const updatedBooks = await GetTextbooks();
+        setTextbooks(updatedBooks);
+
+        return {
+            id: title,
+            title,
+            numPages,
+            initialOffset: finalOffset,
+            detectedOffset,
+        };
+    };
+
     // Handle book upload with automatic page offset inspection
     const handleAddBook = async () => {
         try {
             const pdfPaths = await SelectMultiplePdfsDialog();
             if (!pdfPaths || pdfPaths.length === 0) return;
-
-            setIsConverting(true);
 
             let currentBooks = await GetTextbooks();
             let addedCount = 0;
@@ -560,194 +725,38 @@ export default function MainPage() {
                     continue;
                 }
 
-                setConvertProgress({ current: 0, total: 1, title, statusText: 'PDF 파일 읽는 중...' });
-
-                // Read File as Base64
-                const base64Data = await ReadFileBase64(pdfPath);
-                const raw = window.atob(base64Data);
-                const uint8Array = new Uint8Array(raw.length);
-                for (let j = 0; j < raw.length; j++) {
-                    uint8Array[j] = raw.charCodeAt(j);
+                const addedBook = await convertSinglePdf(pdfPath, title);
+                if (addedBook) {
+                    addedCount++;
+                    lastAddedBookForOffset = addedBook;
+                    currentBooks = await GetTextbooks();
                 }
-
-                // Load with PDF.js
-                const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-                const pdf = await loadingTask.promise;
-                const numPages = pdf.numPages;
-
-                setConvertProgress({ current: 0, total: numPages, title, statusText: '페이지 변환 및 쪽수 검사 중...' });
-
-                const scale = 1.5;
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d', { alpha: false });
-
-                let detectedOffset: number | null = null;
-
-                for (let j = 1; j <= numPages; j++) {
-                    const page = await pdf.getPage(j);
-                    const viewport = page.getViewport({ scale });
-
-                    canvas.width = viewport.width;
-                    canvas.height = viewport.height;
-
-                    if (ctx) {
-                        ctx.fillStyle = 'white';
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                        const renderContext = {
-                            canvasContext: ctx,
-                            viewport: viewport,
-                        } as any;
-                        await page.render(renderContext).promise;
-
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-                        await SavePageImage(title, j, dataUrl);
-
-                        // Inspect page numbers on pages 4 to 12
-                        if (detectedOffset === null && j >= 4 && j <= 12) {
-                            // 1. Check text layer first
-                            const printedFromText = await detectPageNumberFromText(page, viewport);
-                            if (printedFromText !== null && printedFromText > 0) {
-                                detectedOffset = j - printedFromText;
-                            } else {
-                                // 2. Fallback: OCR on corner
-                                const isEven = j % 2 === 0;
-                                const printedFromOcr = await detectPageNumberFromCanvas(canvas, isEven);
-                                if (printedFromOcr !== null && printedFromOcr > 0) {
-                                    detectedOffset = j - printedFromOcr;
-                                }
-                            }
-                        }
-                    }
-
-                    setConvertProgress({ 
-                        current: j, 
-                        total: numPages, 
-                        title, 
-                        statusText: detectedOffset !== null ? `변환 중... (감지된 쪽수 오프셋: ${detectedOffset})` : '변환 중...' 
-                    });
-                }
-
-                // Ensure directory with detected offset (default to 0 if not detected)
-                const finalOffset = detectedOffset !== null ? detectedOffset : 0;
-                await EnsureBookDirWithOffset(title, numPages, finalOffset);
-
-                currentBooks = await GetTextbooks();
-                addedCount++;
-
-                lastAddedBookForOffset = {
-                    id: title,
-                    title,
-                    numPages,
-                    initialOffset: finalOffset,
-                    detectedOffset,
-                };
             }
 
-            setTextbooks(currentBooks);
-
-            if (addedCount > 0) {
-                // Open adjustment modal for the added book so the user can verify/adjust immediately!
-                if (lastAddedBookForOffset) {
-                    setOffsetModalBook(lastAddedBookForOffset);
-                }
+            if (addedCount > 0 && lastAddedBookForOffset) {
+                setOffsetModalBook(lastAddedBookForOffset);
+                showToast(`교과서가 추가되었습니다. 실제 교재 쪽수를 맞춰주세요.`);
             }
         } catch (err: any) {
             console.error("Failed to add book:", err);
             alert(`교과서 추가 중 오류가 발생했습니다: ${err.message || err}`);
         } finally {
             setIsConverting(false);
-            setConvertProgress({ current: 0, total: 0, title: '', statusText: '' });
+            setConvertProgress(prev => ({ ...prev, isOpen: false }));
         }
     };
 
     const handleImportPdfCandidate = async (pdfPath: string, customTitle: string) => {
-        setIsConverting(true);
         try {
-            const title = customTitle || pdfPath.split('\\').pop()?.split('/').pop()?.replace('.pdf', '') || '새 교과서';
-            setConvertProgress({ current: 0, total: 1, title, statusText: 'PDF 파일 읽는 중...' });
-
-            const base64Data = await ReadFileBase64(pdfPath);
-            const raw = window.atob(base64Data);
-            const uint8Array = new Uint8Array(raw.length);
-            for (let j = 0; j < raw.length; j++) {
-                uint8Array[j] = raw.charCodeAt(j);
-            }
-
-            const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-            const pdf = await loadingTask.promise;
-            const numPages = pdf.numPages;
-
-            setConvertProgress({ current: 0, total: numPages, title, statusText: '페이지 변환 및 쪽수 검사 중...' });
-
-            const scale = 1.5;
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d', { alpha: false });
-
-            let detectedOffset: number | null = null;
-
-            for (let j = 1; j <= numPages; j++) {
-                const page = await pdf.getPage(j);
-                const viewport = page.getViewport({ scale });
-
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-
-                if (ctx) {
-                    ctx.fillStyle = 'white';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                    const renderContext = {
-                        canvasContext: ctx,
-                        viewport: viewport,
-                    } as any;
-                    await page.render(renderContext).promise;
-
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-                    await SavePageImage(title, j, dataUrl);
-
-                    if (detectedOffset === null && j >= 4 && j <= 12) {
-                        const printedFromText = await detectPageNumberFromText(page, viewport);
-                        if (printedFromText !== null && printedFromText > 0) {
-                            detectedOffset = j - printedFromText;
-                        } else {
-                            const isEven = j % 2 === 0;
-                            const printedFromOcr = await detectPageNumberFromCanvas(canvas, isEven);
-                            if (printedFromOcr !== null && printedFromOcr > 0) {
-                                detectedOffset = j - printedFromOcr;
-                            }
-                        }
-                    }
-                }
-
-                setConvertProgress({ 
-                    current: j, 
-                    total: numPages, 
-                    title, 
-                    statusText: detectedOffset !== null ? `변환 중... (감지된 쪽수 오프셋: ${detectedOffset})` : '변환 중...' 
-                });
-            }
-
-            const finalOffset = detectedOffset !== null ? detectedOffset : 0;
-            await EnsureBookDirWithOffset(title, numPages, finalOffset);
-
-            const updatedBooks = await GetTextbooks();
-            setTextbooks(updatedBooks);
-
-            setOffsetModalBook({
-                id: title,
-                title,
-                numPages,
-                initialOffset: finalOffset,
-                detectedOffset,
-            });
-            showToast(`'${title}' 교과서가 추가되었습니다.`);
+            const addedBook = await convertSinglePdf(pdfPath, customTitle);
+            return addedBook;
         } catch (err: any) {
             console.error("Failed to import PDF candidate:", err);
             alert(`PDF 추가 중 오류 발생: ${err.message || err}`);
+            return null;
         } finally {
             setIsConverting(false);
-            setConvertProgress({ current: 0, total: 0, title: '', statusText: '' });
+            setConvertProgress(prev => ({ ...prev, isOpen: false }));
         }
     };
 
@@ -1294,6 +1303,17 @@ export default function MainPage() {
                     }}
                 />
             )}
+
+            {/* Conversion Progress Modal (Horizontal Animated Progress Bar with %) */}
+            <ConversionProgressModal
+                isOpen={convertProgress.isOpen}
+                title={convertProgress.title}
+                current={convertProgress.current}
+                total={convertProgress.total}
+                percent={convertProgress.percent}
+                statusText={convertProgress.statusText}
+                detectedOffset={convertProgress.detectedOffset}
+            />
 
             {/* Add Book Modal (PDF vs USB Auto Scan) */}
             <AddBookModal

@@ -14,6 +14,26 @@ export namespace main {
 	        this.pageOffset = source["pageOffset"];
 	    }
 	}
+	export class PdfConvertResult {
+	    success: boolean;
+	    title: string;
+	    numPages: number;
+	    detectedOffset: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PdfConvertResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.title = source["title"];
+	        this.numPages = source["numPages"];
+	        this.detectedOffset = source["detectedOffset"];
+	        this.error = source["error"];
+	    }
+	}
 	export class Textbook {
 	    id: string;
 	    title: string;

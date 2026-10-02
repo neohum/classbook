@@ -1,9 +1,9 @@
 {
-  "version": "1.2.22",
+  "version": "1.2.23",
   "releaseDate": "2026-09-30",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.22/classbook-setup-v1.2.22.exe",
-  "installerName": "classbook-setup-v1.2.22.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.22.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20261002%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20261002T004403Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1b35305ec499550c8f7b05cc24651d6d751a4f558ec16794ffd8dace54ac2fa3",
-  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.22.exe",
-  "notes": "주학습계획안 점심시간 알림 전용 빈칸 처리 및 5·6교시 시종 동기화 (v1.2.21)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.23/classbook-setup-v1.2.23.exe",
+  "installerName": "classbook-setup-v1.2.23.exe",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.23.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20261002%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20261002T012237Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3c350d72d7bca75d5555902134290cae0a4e1453d1a36a21af4ca2b7af03c0aa",
+  "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.23.exe",
+  "notes": "대용량 PDF 초고속 변환, 좌우 막대 진행률 애니메이션 및 메모리 부족(STATUS_BREAKPOINT) 해결 (v1.2.23)"
 }

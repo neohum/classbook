@@ -28,7 +28,7 @@ interface Props {
     isOpen: boolean;
     onClose: () => void;
     onAddFromPdf: () => void;
-    onImportPdfCandidate: (sourcePath: string, title: string) => Promise<void>;
+    onImportPdfCandidate: (sourcePath: string, title: string) => Promise<any>;
     onBookAdded: (book: { id: string; title: string; numPages: number; initialOffset: number; detectedOffset: number | null }) => void;
     existingTitles: string[];
 }
@@ -170,6 +170,7 @@ export default function AddBookModal({
             return;
         }
 
+        onClose();
         setIsImporting(true);
         let lastAddedBook: any = null;
 
@@ -189,7 +190,10 @@ export default function AddBookModal({
                         detectedOffset: null
                     };
                 } else if (item.type === 'pdf') {
-                    await onImportPdfCandidate(item.sourcePath, cleanTitle);
+                    const added = await onImportPdfCandidate(item.sourcePath, cleanTitle);
+                    if (added) {
+                        lastAddedBook = added;
+                    }
                 }
             } catch (e: any) {
                 console.error(`Failed to import ${cleanTitle}:`, e);
@@ -198,7 +202,6 @@ export default function AddBookModal({
 
         setIsImporting(false);
         setImportStatus('');
-        onClose();
 
         if (lastAddedBook) {
             onBookAdded(lastAddedBook);

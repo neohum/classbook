@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "주학습계획안 점심시간 알림 전용 빈칸 처리 및 5·6교시 시종 동기화 (v1.2.21)"
+    notes = "대용량 PDF 초고속 변환, 좌우 막대 진행률 애니메이션 및 메모리 부족(STATUS_BREAKPOINT) 해결 (v1.2.23)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

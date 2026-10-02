@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	_ "embed"
@@ -30,7 +31,10 @@ import (
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.22"
+//go:embed convert_pdf.py
+var embeddedConvertPdfScript []byte
+
+const AppVersion = "1.2.23"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -917,9 +921,140 @@ func (a *App) ImportBookFromImageFolder(title string, folderPath string, pageOff
 		if err != nil {
 			return fmt.Errorf("이미지 복사 실패: %w", err)
 		}
+
+		pct := int(float64(idx+1) / float64(len(imgFiles)) * 100)
+		runtime.EventsEmit(a.ctx, "convert-progress", map[string]interface{}{
+			"current":        idx + 1,
+			"total":          len(imgFiles),
+			"percent":        pct,
+			"title":          title,
+			"statusText":     fmt.Sprintf("페이지 복사 중 (%d/%d쪽)", idx+1, len(imgFiles)),
+			"detectedOffset": "",
+		})
 	}
 
 	return a.EnsureBookDirWithOffset(title, len(imgFiles), pageOffset)
+}
+
+type PdfConvertResult struct {
+	Success        bool   `json:"success"`
+	Title          string `json:"title"`
+	NumPages       int    `json:"numPages"`
+	DetectedOffset int    `json:"detectedOffset"`
+	Error          string `json:"error,omitempty"`
+}
+
+// ConvertPdfToBook uses python/fitz to extract PDF pages with live progress events
+func (a *App) ConvertPdfToBook(title string, pdfPath string) (*PdfConvertResult, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, fmt.Errorf("교과서 제목이 비어있습니다")
+	}
+	reg := regexp.MustCompile(`[\\/:*?"<>|]`)
+	title = reg.ReplaceAllString(title, "_")
+
+	imagesDir := getImagesDir()
+	bookDir := filepath.Join(imagesDir, title)
+	if err := os.MkdirAll(bookDir, 0755); err != nil {
+		return nil, fmt.Errorf("교과서 폴더 생성 실패: %w", err)
+	}
+
+	// Prepare convert_pdf.py script
+	appDir := getAppDir()
+	scriptPath := filepath.Join(appDir, "convert_pdf.py")
+	if _, err := os.Stat(scriptPath); err != nil || len(embeddedConvertPdfScript) > 0 {
+		_ = os.WriteFile(scriptPath, embeddedConvertPdfScript, 0644)
+	}
+
+	// Find python executable with fitz
+	pyCandidates := []string{"python", "py", "python3"}
+	chosenCmd := ""
+	for _, cmdName := range pyCandidates {
+		testCmd := exec.Command(cmdName, "-c", "import fitz; print('OK')")
+		testCmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+		out, err := testCmd.Output()
+		if err == nil && strings.Contains(string(out), "OK") {
+			chosenCmd = cmdName
+			break
+		}
+	}
+
+	if chosenCmd == "" {
+		return nil, fmt.Errorf("PyMuPDF (fitz) 지원 Python이 감지되지 않았습니다")
+	}
+
+	cmd := exec.Command(chosenCmd, scriptPath, pdfPath, bookDir, title)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("프로세스 파이프 생성 실패: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("PDF 변환 프로세스 시작 실패: %w", err)
+	}
+
+	total := 1
+	finalOffset := 0
+	scanner := bufio.NewScanner(stdoutPipe)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "INIT:") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				if t, err := strconv.Atoi(parts[1]); err == nil && t > 0 {
+					total = t
+				}
+			}
+		} else if strings.HasPrefix(line, "PROGRESS:") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 4 {
+				curr, _ := strconv.Atoi(parts[1])
+				tot, _ := strconv.Atoi(parts[2])
+				pct, _ := strconv.Atoi(parts[3])
+				offsetStr := ""
+				if len(parts) >= 5 {
+					offsetStr = parts[4]
+				}
+				status := fmt.Sprintf("페이지 이미지 추출 중 (%d/%d쪽)", curr, tot)
+				if offsetStr != "" {
+					status = fmt.Sprintf("페이지 추출 중 (%d/%d쪽, 오프셋 감지: %s)", curr, tot, offsetStr)
+				}
+				runtime.EventsEmit(a.ctx, "convert-progress", map[string]interface{}{
+					"current":        curr,
+					"total":          tot,
+					"percent":        pct,
+					"title":          title,
+					"statusText":     status,
+					"detectedOffset": offsetStr,
+				})
+			}
+		} else if strings.HasPrefix(line, "DONE:") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 3 {
+				t, _ := strconv.Atoi(parts[1])
+				off, _ := strconv.Atoi(parts[2])
+				if t > 0 {
+					total = t
+				}
+				finalOffset = off
+			}
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("PDF 변환 실패: %w", err)
+	}
+
+	_ = a.EnsureBookDirWithOffset(title, total, finalOffset)
+
+	return &PdfConvertResult{
+		Success:        true,
+		Title:          title,
+		NumPages:       total,
+		DetectedOffset: finalOffset,
+	}, nil
 }
 
 // ==========================================
