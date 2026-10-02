@@ -15,12 +15,64 @@ export interface ScheduleItem {
     restMessage: string;
 }
 
+export function isLunchSchedule(name: string): boolean {
+    if (!name) return false;
+    const lower = name.toLowerCase().replace(/\s+/g, '');
+    return lower.includes('점심') || lower.includes('급식');
+}
+
+export function isBreakSchedule(name: string): boolean {
+    if (!name) return false;
+    const lower = name.toLowerCase().replace(/\s+/g, '');
+    return isLunchSchedule(name) || 
+           lower.includes('준비시간') || 
+           lower.includes('쉬는시간') || 
+           lower.includes('휴식') || 
+           lower.includes('청소');
+}
+
+export function parsePeriodFromName(name: string, fallbackNum?: number): number {
+    if (!name) return fallbackNum !== undefined ? fallbackNum : 1;
+    const trimmed = name.trim();
+    if (isLunchSchedule(trimmed)) {
+        return -1; // Lunch break
+    }
+    if (isBreakSchedule(trimmed)) {
+        return -2; // Preparation or transition break
+    }
+    if (trimmed.includes('아침')) {
+        return 0; // Morning activity
+    }
+    const match = trimmed.match(/(\d+)\s*교시/);
+    if (match) {
+        return parseInt(match[1], 10);
+    }
+    const digits = trimmed.replace(/[^0-9]/g, '');
+    if (digits) {
+        const parsed = parseInt(digits, 10);
+        if (!isNaN(parsed)) return parsed;
+    }
+    return fallbackNum !== undefined ? fallbackNum : 1;
+}
+
+export function sanitizeScheduleItems(items: ScheduleItem[]): ScheduleItem[] {
+    return items.map((item, idx) => {
+        const name = (item.name || '').trim();
+        const deducedPeriod = parsePeriodFromName(name, item.period !== undefined ? item.period : (idx + 1));
+        return {
+            ...item,
+            period: deducedPeriod
+        };
+    });
+}
+
 export const DEFAULT_SCHEDULE: ScheduleItem[] = [
     { id: '0', period: 0, name: '아침활동', startTime: '08:40', endTime: '09:00', startMessage: '아침활동 시간입니다. 하루를 활기차게 시작해요!', restMessage: '1교시 수업 준비 시간입니다' },
     { id: '1', period: 1, name: '1교시', startTime: '09:00', endTime: '09:40', startMessage: '1교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
     { id: '2', period: 2, name: '2교시', startTime: '09:50', endTime: '10:30', startMessage: '2교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
     { id: '3', period: 3, name: '3교시', startTime: '10:40', endTime: '11:20', startMessage: '3교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
-    { id: '4', period: 4, name: '4교시', startTime: '11:30', endTime: '12:10', startMessage: '4교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
+    { id: '4', period: 4, name: '4교시', startTime: '11:30', endTime: '12:10', startMessage: '4교시 수업을 시작합니다.', restMessage: '점심시간입니다. 맛있는 점심 드세요!' },
+    { id: 'lunch', period: -1, name: '점심시간', startTime: '12:10', endTime: '13:00', startMessage: '점심시간입니다. 즐겁고 안전한 점심시간 되세요!', restMessage: '5교시 수업 준비 시간입니다' },
     { id: '5', period: 5, name: '5교시', startTime: '13:00', endTime: '13:40', startMessage: '5교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
     { id: '6', period: 6, name: '6교시', startTime: '13:50', endTime: '14:30', startMessage: '6교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
 ];
@@ -31,13 +83,7 @@ export function getStoredSchedule(): ScheduleItem[] {
         if (saved) {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                return parsed.map((item: ScheduleItem) => {
-                    const isMorning = item.name.includes('아침') || (item.startTime && item.startTime < '09:00' && (!item.period || item.period === 0 || item.period > 6));
-                    if (isMorning) {
-                        return { ...item, period: 0 };
-                    }
-                    return item;
-                });
+                return sanitizeScheduleItems(parsed);
             }
         }
     } catch (e) { }
@@ -125,9 +171,10 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                     try {
                         const parsed = JSON.parse(backendJson);
                         if (Array.isArray(parsed) && parsed.length > 0) {
-                            setLocalSchedules(parsed);
+                            const sanitized = sanitizeScheduleItems(parsed);
+                            setLocalSchedules(sanitized);
                             try {
-                                localStorage.setItem('classbook_schedule_v3', backendJson);
+                                localStorage.setItem('classbook_schedule_v3', JSON.stringify(sanitized));
                             } catch (e) {}
                         }
                     } catch (e) {}
@@ -143,10 +190,8 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
 
         // Critical: If the user opened the form and entered start/end times but forgot to click "추가" before clicking "저장 및 닫기", auto-commit!
         if (showAddForm && newStartTime && newEndTime) {
-            const isMorning = newName.includes('아침') || (newStartTime && newStartTime < '09:00');
-            const parsedNum = parseInt(newName.replace(/[^0-9]/g, ''), 10);
-            const periodNum = isMorning ? 0 : (!isNaN(parsedNum) ? parsedNum : (schedulesToSave.length + 1));
-            const name = newName.trim() || (isMorning ? '아침활동' : `${periodNum}교시`);
+            const periodNum = parsePeriodFromName(newName, schedulesToSave.length + 1);
+            const name = newName.trim() || (periodNum === 0 ? '아침활동' : (periodNum === -1 ? '점심시간' : `${periodNum}교시`));
             const newId = Math.random().toString(36).substring(2, 9);
             const newItem: ScheduleItem = {
                 id: newId,
@@ -154,12 +199,13 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                 name: name,
                 startTime: newStartTime,
                 endTime: newEndTime,
-                startMessage: newStartMsg.trim() || `${name} 수업을 시작합니다.`,
-                restMessage: newRestMsg.trim() || '쉬는 시간입니다'
+                startMessage: newStartMsg.trim() || (periodNum === -1 ? '점심시간입니다. 즐겁고 안전한 점심시간 되세요!' : `${name} 수업을 시작합니다.`),
+                restMessage: newRestMsg.trim() || (periodNum === -1 ? '5분 준비시간입니다' : '쉬는 시간입니다')
             };
             schedulesToSave.push(newItem);
         }
 
+        schedulesToSave = sanitizeScheduleItems(schedulesToSave);
         // Always sort chronologically by startTime
         schedulesToSave.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
@@ -189,7 +235,7 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
             startMessage: `${newPeriod}교시 수업을 시작합니다.`,
             restMessage: '쉬는 시간입니다'
         };
-        const updated = [...localSchedules, newItem].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+        const updated = sanitizeScheduleItems([...localSchedules, newItem]).sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
         setLocalSchedules(updated);
         setHighlightId(newId);
         setTimeout(() => setHighlightId(null), 3000);
@@ -201,10 +247,8 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
             alert("시작 시간과 종료 시간을 입력해주세요.");
             return;
         }
-        const isMorning = newName.includes('아침') || (newStartTime && newStartTime < '09:00');
-        const parsedNum = parseInt(newName.replace(/[^0-9]/g, ''), 10);
-        const periodNum = isMorning ? 0 : (!isNaN(parsedNum) ? parsedNum : (localSchedules.length + 1));
-        const name = newName.trim() || (isMorning ? '아침활동' : `${periodNum}교시`);
+        const periodNum = parsePeriodFromName(newName, localSchedules.length + 1);
+        const name = newName.trim() || (periodNum === 0 ? '아침활동' : (periodNum === -1 ? '점심시간' : `${periodNum}교시`));
         const newId = Math.random().toString(36).substring(2, 9);
         const newItem: ScheduleItem = {
             id: newId,
@@ -212,10 +256,10 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
             name: name,
             startTime: newStartTime,
             endTime: newEndTime,
-            startMessage: newStartMsg.trim() || `${name} 수업을 시작합니다.`,
-            restMessage: newRestMsg.trim() || '쉬는 시간입니다'
+            startMessage: newStartMsg.trim() || (periodNum === -1 ? '점심시간입니다. 즐겁고 안전한 점심시간 되세요!' : `${name} 수업을 시작합니다.`),
+            restMessage: newRestMsg.trim() || (periodNum === -1 ? '5분 준비시간입니다' : '쉬는 시간입니다')
         };
-        const updated = [...localSchedules, newItem].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+        const updated = sanitizeScheduleItems([...localSchedules, newItem]).sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
         setLocalSchedules(updated);
         setHighlightId(newId);
         setTimeout(() => setHighlightId(null), 3000);
@@ -523,9 +567,19 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                             <span className={`w-8 h-7 px-1 rounded-xl font-black text-xs flex items-center justify-center border shrink-0 ${
                                                 schedule.period === 0 || schedule.name.includes('아침')
                                                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 text-[11px]'
-                                                    : 'bg-violet-600/30 text-violet-300 border-violet-500/30'
+                                                    : (isLunchSchedule(schedule.name) || schedule.period === -1)
+                                                        ? 'bg-orange-500/20 text-orange-300 border-orange-500/40 text-[11px]'
+                                                        : (isBreakSchedule(schedule.name) || schedule.period === -2)
+                                                            ? 'bg-slate-700/60 text-slate-300 border-slate-600/40 text-[11px]'
+                                                            : 'bg-violet-600/30 text-violet-300 border-violet-500/30'
                                             }`}>
-                                                {schedule.period === 0 || schedule.name.includes('아침') ? '아침' : (schedule.period !== undefined ? schedule.period : (idx + 1))}
+                                                {schedule.period === 0 || schedule.name.includes('아침') 
+                                                    ? '아침' 
+                                                    : (isLunchSchedule(schedule.name) || schedule.period === -1)
+                                                        ? '점심'
+                                                        : (isBreakSchedule(schedule.name) || schedule.period === -2)
+                                                            ? '휴식'
+                                                            : (schedule.period !== undefined && schedule.period > 0 ? schedule.period : (idx + 1))}
                                             </span>
 
                                             {/* Name Input */}
@@ -534,7 +588,8 @@ export default function ScheduleConfigModal({ isOpen, onClose, onScheduleChanged
                                                 value={schedule.name}
                                                 onChange={(e) => {
                                                     const val = e.target.value;
-                                                    setLocalSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, name: val } : s));
+                                                    const autoPeriod = parsePeriodFromName(val, schedule.period);
+                                                    setLocalSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, name: val, period: autoPeriod } : s));
                                                 }}
                                                 className="bg-slate-900 text-white font-bold text-sm sm:text-base px-3 py-1.5 rounded-xl border border-slate-700 focus:border-violet-500 outline-none w-28 sm:w-32"
                                                 placeholder="예: 1교시"

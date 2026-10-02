@@ -20,7 +20,14 @@ import { detectPageNumberFromText, detectPageNumberFromCanvas } from '../utils/o
 import PageOffsetAdjustModal from '../components/PageOffsetAdjustModal';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal, { DEFAULT_MORNING_TOPICS } from '../components/WeeklyPlanScheduleModal';
-import ScheduleConfigModal, { getStoredSchedule, type ScheduleItem } from '../components/ScheduleConfigModal';
+import ScheduleConfigModal, { 
+    getStoredSchedule, 
+    isLunchSchedule, 
+    isBreakSchedule, 
+    parsePeriodFromName, 
+    sanitizeScheduleItems, 
+    type ScheduleItem 
+} from '../components/ScheduleConfigModal';
 import { resolveBookForSubject } from '../utils/bookResolver';
 import ErrorBoundary from '../components/ErrorBoundary';
 
@@ -129,7 +136,7 @@ export default function MainPage() {
 
         for (let i = 0; i < currentSchedules.length; i++) {
             const s = currentSchedules[i];
-            const pNum = s.period !== undefined ? s.period : (s.name.includes('아침') ? 0 : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1)));
+            const pNum = s.period !== undefined ? s.period : parsePeriodFromName(s.name, i + 1);
             if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                 activePeriod = pNum;
                 activeSched = s;
@@ -151,6 +158,32 @@ export default function MainPage() {
                 activePeriod = 0;
                 activeSched = morningSched;
             }
+        }
+
+        const isLunchTime = isLunchSchedule(activeSched?.name || '') || activePeriod === -1;
+        const isBreakTime = !isLunchTime && (isBreakSchedule(activeSched?.name || '') || activePeriod === -2);
+
+        if (isLunchTime) {
+            setAlertPeriod(-1);
+            setAlertPeriodName(activeSched?.name || '점심시간');
+            setAlertPeriodTime(activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '12:10 ~ 12:55');
+            setAlertItem(null);
+            setAlertIsRestTime(true);
+            setAlertCustomMessage(activeSched?.startMessage || '점심시간입니다. 즐겁고 맛있는 식사 시간 되세요!');
+            setIsAlertModalOpen(true);
+            showToast('현재 점심시간입니다. 맛있는 식사 하세요!');
+            return;
+        }
+
+        if (isBreakTime) {
+            setAlertPeriod(-2);
+            setAlertPeriodName(activeSched?.name || '준비 시간');
+            setAlertPeriodTime(activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '');
+            setAlertItem(null);
+            setAlertIsRestTime(true);
+            setAlertCustomMessage(activeSched?.startMessage || `${activeSched?.name || '휴식'} 시간입니다.`);
+            setIsAlertModalOpen(true);
+            return;
         }
 
         let targetItem = dayItems.find(it => it.period === activePeriod);
@@ -253,8 +286,9 @@ export default function MainPage() {
                     if (savedSchedules) {
                         const parsed = JSON.parse(savedSchedules);
                         if (Array.isArray(parsed) && parsed.length > 0) {
-                            localStorage.setItem('classbook_schedule_v3', savedSchedules);
-                            setSchedules(parsed);
+                            const sanitized = sanitizeScheduleItems(parsed);
+                            localStorage.setItem('classbook_schedule_v3', JSON.stringify(sanitized));
+                            setSchedules(sanitized);
                         }
                     }
                 } catch (e) {}
@@ -305,10 +339,33 @@ export default function MainPage() {
             // Check if current time matches any period start or end
             for (let i = 0; i < currentSchedules.length; i++) {
                 const sched = currentSchedules[i];
-                const schedPeriod = sched.period !== undefined ? sched.period : (sched.name.includes('아침') ? 0 : (parseInt(sched.name.replace(/[^0-9]/g, ''), 10) || (i + 1)));
+                const schedPeriod = sched.period !== undefined ? sched.period : parsePeriodFromName(sched.name, i + 1);
 
                 if (sched.startTime === currentTimeStr) {
                     lastAlertTimeRef.current = currentTimeStr;
+
+                    if (isLunchSchedule(sched.name) || schedPeriod === -1) {
+                        setAlertPeriod(-1);
+                        setAlertPeriodName(sched.name || '점심시간');
+                        setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
+                        setAlertItem(null);
+                        setAlertIsRestTime(true);
+                        setAlertCustomMessage(sched.startMessage || '점심시간입니다. 즐겁고 맛있는 식사 시간 되세요!');
+                        setIsAlertModalOpen(true);
+                        break;
+                    }
+
+                    if (isBreakSchedule(sched.name) || schedPeriod === -2) {
+                        setAlertPeriod(-2);
+                        setAlertPeriodName(sched.name);
+                        setAlertPeriodTime(`${sched.startTime} ~ ${sched.endTime}`);
+                        setAlertItem(null);
+                        setAlertIsRestTime(true);
+                        setAlertCustomMessage(sched.startMessage || `${sched.name} 시간입니다.`);
+                        setIsAlertModalOpen(true);
+                        break;
+                    }
+
                     const dayItems = currentPlan.schedule[dayOfWeek] || [];
                     let foundItem = dayItems.find(it => it.period === schedPeriod);
                     if (schedPeriod === 0 && !foundItem) {
@@ -365,13 +422,13 @@ export default function MainPage() {
                 } else if (sched.endTime === currentTimeStr) {
                     lastAlertTimeRef.current = currentTimeStr;
                     // 마칠 때 (쉬는 시간 시작): "쉬는 시간입니다"가 기본으로 뜸
-                    const periodTitle = sched.name || `${schedPeriod}교시`;
+                    const periodTitle = sched.name || (schedPeriod === 0 ? '아침활동' : (schedPeriod === -1 ? '점심시간' : `${schedPeriod}교시`));
                     setAlertPeriod(schedPeriod);
                     setAlertPeriodName(periodTitle);
                     setAlertPeriodTime(sched.endTime);
                     setAlertItem(null);
                     setAlertIsRestTime(true);
-                    setAlertCustomMessage(sched.restMessage || "쉬는 시간입니다");
+                    setAlertCustomMessage(sched.restMessage || (isLunchSchedule(sched.name) ? '5분 준비시간입니다' : '쉬는 시간입니다'));
                     setIsAlertModalOpen(true);
                     break;
                 }
@@ -632,7 +689,7 @@ export default function MainPage() {
         if (currentSchedules.length > 0) {
             for (let i = 0; i < currentSchedules.length; i++) {
                 const s = currentSchedules[i];
-                const pNum = s.period !== undefined ? s.period : (s.name.includes('아침') ? 0 : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1)));
+                const pNum = s.period !== undefined ? s.period : parsePeriodFromName(s.name, i + 1);
                 if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                     activePeriod = pNum;
                     activeSched = s;
@@ -655,6 +712,32 @@ export default function MainPage() {
                 activePeriod = 0;
                 activeSched = morningSched;
             }
+        }
+
+        const isLunchTime = isLunchSchedule(activeSched?.name || '') || activePeriod === -1;
+        const isBreakTime = !isLunchTime && (isBreakSchedule(activeSched?.name || '') || activePeriod === -2);
+
+        if (isLunchTime) {
+            setAlertPeriod(-1);
+            setAlertPeriodName(activeSched?.name || '점심시간');
+            setAlertPeriodTime(activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '12:10 ~ 12:55');
+            setAlertItem(null);
+            setAlertIsRestTime(true);
+            setAlertCustomMessage(activeSched?.startMessage || '점심시간입니다. 즐겁고 맛있는 식사 시간 되세요!');
+            setIsAlertModalOpen(true);
+            showToast('현재 점심시간입니다. 맛있는 식사 하세요!');
+            return;
+        }
+
+        if (isBreakTime) {
+            setAlertPeriod(-2);
+            setAlertPeriodName(activeSched?.name || '준비 시간');
+            setAlertPeriodTime(activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '');
+            setAlertItem(null);
+            setAlertIsRestTime(true);
+            setAlertCustomMessage(activeSched?.startMessage || `${activeSched?.name || '휴식'} 시간입니다.`);
+            setIsAlertModalOpen(true);
+            return;
         }
 
         let targetItem = dayItems.find(it => it.period === activePeriod);
@@ -742,7 +825,7 @@ export default function MainPage() {
 
         for (let i = 0; i < currentSchedules.length; i++) {
             const s = currentSchedules[i];
-            const pNum = s.period || parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1);
+            const pNum = s.period !== undefined ? s.period : parsePeriodFromName(s.name, i + 1);
             if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                 activePeriod = pNum;
                 activeSched = s;
@@ -755,6 +838,30 @@ export default function MainPage() {
                 activePeriod = pNum;
                 activeSched = s;
             }
+        }
+
+        const isLunchTime = isLunchSchedule(activeSched?.name || '') || activePeriod === -1;
+        if (isLunchTime) {
+            setAlertPeriod(-1);
+            setAlertPeriodName(activeSched?.name || '점심시간');
+            setAlertPeriodTime(activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '12:10 ~ 12:55');
+            setAlertItem(null);
+            setAlertIsRestTime(true);
+            setAlertCustomMessage(activeSched?.startMessage || '점심시간입니다. 즐겁고 맛있는 식사 시간 되세요!');
+            setIsAlertModalOpen(true);
+            return;
+        }
+
+        const isBreakTime = isBreakSchedule(activeSched?.name || '') || activePeriod === -2;
+        if (isBreakTime) {
+            setAlertPeriod(-2);
+            setAlertPeriodName(activeSched?.name || '준비 시간');
+            setAlertPeriodTime(activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '');
+            setAlertItem(null);
+            setAlertIsRestTime(true);
+            setAlertCustomMessage(activeSched?.startMessage || `${activeSched?.name || '휴식'} 시간입니다.`);
+            setIsAlertModalOpen(true);
+            return;
         }
 
         let currentItem = items.find(it => it.period === activePeriod);

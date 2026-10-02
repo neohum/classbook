@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "시종 시간 직접 입력 자동 저장 및 시간순 정렬, 시간표/알림 영구 동기화 개선 (v1.2.19)"
+    notes = "주학습계획안 점심시간 알림 전용 빈칸 처리 및 5·6교시 시종 동기화 (v1.2.21)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

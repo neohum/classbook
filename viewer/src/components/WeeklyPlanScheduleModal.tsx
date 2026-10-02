@@ -15,7 +15,7 @@ import {
 import HwpHtmlViewerModal from './HwpHtmlViewerModal';
 import ErrorBoundary from './ErrorBoundary';
 import { resolveBookForSubject } from '../utils/bookResolver';
-import { getStoredSchedule, type ScheduleItem } from './ScheduleConfigModal';
+import { getStoredSchedule, isLunchSchedule, isBreakSchedule, parsePeriodFromName, type ScheduleItem } from './ScheduleConfigModal';
 
 interface Props {
     isOpen: boolean;
@@ -107,54 +107,119 @@ function WeeklyPlanScheduleModalContent({
     }, []);
 
     const schedulePeriods = useMemo(() => {
-        const periodMap = new Map<number, { period: number; name: string; time: string }>();
+        interface GridPeriodItem {
+            period: number;
+            name: string;
+            time: string;
+            isLunch: boolean;
+            isBreak: boolean;
+            orderVal: number;
+        }
 
-        // Always ensure period 0 (아침활동) exists at the top
-        const morningSched = storedSchedules.find(s => s.period === 0 || s.name.includes('아침'));
-        const morningTimeStr = morningSched 
-            ? ((morningSched.startTime && morningSched.endTime) ? `${morningSched.startTime}~${morningSched.endTime}` : (morningSched.startTime || '')) 
-            : '08:40~09:00';
-        periodMap.set(0, {
-            period: 0,
-            name: morningSched?.name || '아침활동',
-            time: morningTimeStr
-        });
+        const periodList: GridPeriodItem[] = [];
+        const seenPeriods = new Set<number>();
 
-        storedSchedules.forEach((s, idx) => {
-            const isMorning = s.period === 0 || s.name.includes('아침');
-            const p = isMorning ? 0 : (s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (idx + 1)));
+        // 1. Process storedSchedules
+        storedSchedules.forEach((s) => {
+            const isLunch = isLunchSchedule(s.name) || s.period === -1;
+            const isBreak = !isLunch && (isBreakSchedule(s.name) || s.period === -2);
+
+            // Omit minor transition breaks (like 5분 준비시간) from the timetable grid rows
+            if (isBreak) {
+                return;
+            }
+
+            const p = isLunch ? -1 : (s.period !== undefined ? s.period : parsePeriodFromName(s.name));
+            if (seenPeriods.has(p)) return;
+            seenPeriods.add(p);
+
             const timeStr = (s.startTime && s.endTime) ? `${s.startTime}~${s.endTime}` : (s.startTime || '');
-            periodMap.set(p, {
+
+            let orderVal = p;
+            if (p === 0) orderVal = 0;
+            else if (isLunch) orderVal = 4.5;
+            else if (p > 0) orderVal = p;
+
+            periodList.push({
                 period: p,
-                name: s.name || (p === 0 ? '아침활동' : `${p}교시`),
-                time: timeStr
+                name: s.name || (p === 0 ? '아침활동' : (isLunch ? '점심시간' : `${p}교시`)),
+                time: timeStr,
+                isLunch,
+                isBreak: false,
+                orderVal
             });
         });
 
-        // Also check if effectivePlan has any periods not in storedSchedules
+        // Ensure morning activity (period 0) exists
+        if (!seenPeriods.has(0)) {
+            const morningSched = storedSchedules.find(s => s.period === 0 || s.name.includes('아침'));
+            const morningTimeStr = morningSched 
+                ? ((morningSched.startTime && morningSched.endTime) ? `${morningSched.startTime}~${morningSched.endTime}` : (morningSched.startTime || '')) 
+                : '08:40~09:00';
+            periodList.push({
+                period: 0,
+                name: morningSched?.name || '아침활동',
+                time: morningTimeStr,
+                isLunch: false,
+                isBreak: false,
+                orderVal: 0
+            });
+            seenPeriods.add(0);
+        }
+
+        // Ensure lunch break (period -1) exists
+        if (!seenPeriods.has(-1)) {
+            const lunchSched = storedSchedules.find(s => isLunchSchedule(s.name) || s.period === -1);
+            const lunchTimeStr = lunchSched
+                ? ((lunchSched.startTime && lunchSched.endTime) ? `${lunchSched.startTime}~${lunchSched.endTime}` : (lunchSched.startTime || ''))
+                : '12:10~13:00';
+            periodList.push({
+                period: -1,
+                name: lunchSched?.name || '점심시간',
+                time: lunchTimeStr,
+                isLunch: true,
+                isBreak: false,
+                orderVal: 4.5
+            });
+            seenPeriods.add(-1);
+        }
+
+        // Add any teachable periods from effectivePlan (1~6교시)
         if (effectivePlan?.schedule) {
             Object.values(effectivePlan.schedule).forEach(dayItems => {
                 dayItems.forEach(item => {
                     const p = item.period !== undefined ? item.period : 1;
-                    if (!periodMap.has(p)) {
-                        periodMap.set(p, {
+                    if (p > 0 && !seenPeriods.has(p)) {
+                        seenPeriods.add(p);
+                        periodList.push({
                             period: p,
-                            name: p === 0 ? '아침활동' : `${p}교시`,
-                            time: ''
+                            name: `${p}교시`,
+                            time: '',
+                            isLunch: false,
+                            isBreak: false,
+                            orderVal: p
                         });
                     }
                 });
             });
         }
 
-        // Fallback default: ensure at least periods 1 to 6 exist if empty
-        if (periodMap.size <= 1) {
-            [1, 2, 3, 4, 5, 6].forEach(p => {
-                periodMap.set(p, { period: p, name: `${p}교시`, time: '' });
-            });
-        }
+        // Fallback default: ensure periods 1 to 6 exist
+        [1, 2, 3, 4, 5, 6].forEach(p => {
+            if (!seenPeriods.has(p)) {
+                seenPeriods.add(p);
+                periodList.push({
+                    period: p,
+                    name: `${p}교시`,
+                    time: '',
+                    isLunch: false,
+                    isBreak: false,
+                    orderVal: p
+                });
+            }
+        });
 
-        return Array.from(periodMap.values()).sort((a, b) => a.period - b.period);
+        return periodList.sort((a, b) => a.orderVal - b.orderVal);
     }, [storedSchedules, effectivePlan]);
 
     // Edit/Add Form State
@@ -236,7 +301,8 @@ function WeeklyPlanScheduleModalContent({
 
     // Helper: get sanitized list for a given day
     const getSanitizedDayItems = (day: string): main.WeeklyPlanItem[] => {
-        const rawItems = effectivePlan?.schedule ? effectivePlan.schedule[day] || [] : [];
+        const rawItems = (effectivePlan?.schedule ? effectivePlan.schedule[day] || [] : [])
+            .filter(it => it.period !== -1 && it.period !== -2 && !isLunchSchedule(it.subject || ''));
 
         const grouped = new Map<number, main.WeeklyPlanItem[]>();
         for (const itm of rawItems) {
@@ -348,6 +414,7 @@ function WeeklyPlanScheduleModalContent({
 
     // Open item editor for adding
     const handleStartAdd = (targetDay: string = selectedDay, targetPeriod?: number) => {
+        if (targetPeriod === -1 || targetPeriod === -2) return;
         const isMorning = targetPeriod === 0;
         const dayItems = getSanitizedDayItems(targetDay);
         const nextPeriod = targetPeriod !== undefined ? targetPeriod : (dayItems.length > 0 
@@ -725,8 +792,10 @@ function WeeklyPlanScheduleModalContent({
                                             onChange={(e) => setEditingItem({ ...editingItem, period: parseInt(e.target.value, 10) })}
                                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500"
                                         >
-                                            {schedulePeriods.map(({ period: p, name, time }) => (
-                                                <option key={p} value={p}>{p === 0 ? '아침활동' : name} {time ? `(${time})` : ''}</option>
+                                            {schedulePeriods
+                                                .filter(p => !p.isLunch && !p.isBreak && p.period >= 0)
+                                                .map(({ period: p, name, time }) => (
+                                                    <option key={p} value={p}>{p === 0 ? '아침활동' : name} {time ? `(${time})` : ''}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -878,21 +947,51 @@ function WeeklyPlanScheduleModalContent({
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-200 text-xs">
-                                            {schedulePeriods.map(({ period, name, time }) => (
-                                                <tr key={period} className="hover:bg-slate-50/60 transition-colors">
-                                                    {/* 교시 Label */}
-                                                    <td className="py-2.5 px-2 text-center font-black text-violet-700 bg-slate-50/80 border-r border-slate-200/80 select-none">
-                                                        <div className="flex flex-col items-center">
-                                                            <span className={`text-xs sm:text-sm font-extrabold leading-tight ${period === 0 ? 'text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-lg border border-amber-300/60' : 'text-violet-900'}`}>
-                                                                {period === 0 ? '아침활동' : name}
-                                                            </span>
-                                                            {time && (
-                                                                <span className="text-[10px] text-slate-400 font-mono font-medium tracking-tight mt-0.5">
-                                                                    {time}
+                                            {schedulePeriods.map(({ period, name, time, isLunch }) => {
+                                                if (isLunch) {
+                                                    return (
+                                                        <tr key={`lunch-${period}`} className="bg-amber-50/30 hover:bg-amber-50/60 transition-colors">
+                                                            {/* 교시 Label: 점심시간 */}
+                                                            <td className="py-2.5 px-2 text-center font-black text-amber-800 bg-amber-100/70 border-r border-amber-200/80 select-none">
+                                                                <div className="flex flex-col items-center">
+                                                                    <span className="text-xs sm:text-sm font-extrabold text-amber-900 bg-amber-200/90 px-2.5 py-0.5 rounded-lg border border-amber-300 shadow-2xs">
+                                                                        {name}
+                                                                    </span>
+                                                                    {time && (
+                                                                        <span className="text-[10px] text-amber-700 font-mono font-medium tracking-tight mt-0.5">
+                                                                            {time}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+
+                                                            {/* Days (Mon - Fri): ALWAYS EMPTY SLOT (빈칸) */}
+                                                            {DAY_LABELS.map(day => (
+                                                                <td key={day} className="p-2 border-r last:border-r-0 border-amber-200/50 align-middle text-center bg-amber-50/20">
+                                                                    <div className="h-16 rounded-xl border border-dashed border-amber-300/80 bg-amber-50/50 flex items-center justify-center text-amber-700/80 select-none">
+                                                                        <span className="text-xs font-bold tracking-wide">점심시간 (급식)</span>
+                                                                    </div>
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <tr key={period} className="hover:bg-slate-50/60 transition-colors">
+                                                        {/* 교시 Label */}
+                                                        <td className="py-2.5 px-2 text-center font-black text-violet-700 bg-slate-50/80 border-r border-slate-200/80 select-none">
+                                                            <div className="flex flex-col items-center">
+                                                                <span className={`text-xs sm:text-sm font-extrabold leading-tight ${period === 0 ? 'text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-lg border border-amber-300/60' : 'text-violet-900'}`}>
+                                                                    {period === 0 ? '아침활동' : name}
                                                                 </span>
-                                                            )}
-                                                        </div>
-                                                    </td>
+                                                                {time && (
+                                                                    <span className="text-[10px] text-slate-400 font-mono font-medium tracking-tight mt-0.5">
+                                                                        {time}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
 
                                                     {/* Days (Mon - Fri) */}
                                                     {DAY_LABELS.map(day => {
@@ -972,7 +1071,8 @@ function WeeklyPlanScheduleModalContent({
                                                         );
                                                     })}
                                                 </tr>
-                                            ))}
+                                            );
+                                        })}
                                         </tbody>
                                     </table>
                                 </div>

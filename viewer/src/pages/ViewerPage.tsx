@@ -6,29 +6,18 @@ import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatch
 import { main } from '../../wailsjs/go/models';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal, { DEFAULT_MORNING_TOPICS } from '../components/WeeklyPlanScheduleModal';
-import ScheduleConfigModal from '../components/ScheduleConfigModal';
+import ScheduleConfigModal, { 
+    getStoredSchedule, 
+    DEFAULT_SCHEDULE, 
+    isLunchSchedule, 
+    isBreakSchedule, 
+    parsePeriodFromName, 
+    type ScheduleItem 
+} from '../components/ScheduleConfigModal';
 import BookSwitcherModal from '../components/BookSwitcherModal';
 import { resolveBookForSubject } from '../utils/bookResolver';
 
-export interface ScheduleItem {
-    id: string;
-    period?: number;
-    name: string;
-    startTime: string;
-    endTime: string;
-    startMessage: string;
-    restMessage: string;
-}
-
-const defaultSchedule: ScheduleItem[] = [
-    { id: '0', period: 0, name: '아침활동', startTime: '08:40', endTime: '09:00', startMessage: '아침활동 시간입니다. 하루를 활기차게 시작해요!', restMessage: '1교시 수업 준비 시간입니다' },
-    { id: '1', period: 1, name: '1교시', startTime: '09:00', endTime: '09:40', startMessage: '1교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
-    { id: '2', period: 2, name: '2교시', startTime: '09:50', endTime: '10:30', startMessage: '2교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
-    { id: '3', period: 3, name: '3교시', startTime: '10:40', endTime: '11:20', startMessage: '3교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
-    { id: '4', period: 4, name: '4교시', startTime: '11:30', endTime: '12:10', startMessage: '4교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
-    { id: '5', period: 5, name: '5교시', startTime: '13:00', endTime: '13:40', startMessage: '5교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
-    { id: '6', period: 6, name: '6교시', startTime: '13:50', endTime: '14:30', startMessage: '6교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
-];
+const defaultSchedule = DEFAULT_SCHEDULE;
 
 let sharedAudioContext: AudioContext | null = null;
 const initAudioContext = () => {
@@ -311,7 +300,7 @@ export default function ViewerPage() {
                     let activeSched = currentScheds[0];
                     for (let i = 0; i < currentScheds.length; i++) {
                         const s = currentScheds[i];
-                        const pNum = s.period !== undefined ? s.period : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || (i + 1));
+                        const pNum = s.period !== undefined ? s.period : parsePeriodFromName(s.name, i + 1);
                         if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                             activePeriod = pNum;
                             activeSched = s;
@@ -326,19 +315,33 @@ export default function ViewerPage() {
                         }
                     }
 
-                    let targetItem = dayItems.find(it => it.period === activePeriod);
-                    if (!targetItem && dayItems.length > 0) {
-                        targetItem = dayItems[activePeriod - 1] || dayItems[0];
-                    }
+                    const isLunch = isLunchSchedule(activeSched?.name || '') || activePeriod === -1;
+                    const isBreak = !isLunch && (isBreakSchedule(activeSched?.name || '') || activePeriod === -2);
 
-                    setAlertData({
-                        isOpen: true,
-                        isRestTime: false,
-                        periodName: activeSched?.name || `${activePeriod}교시`,
-                        periodTime: activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '',
-                        customMessage: activeSched?.startMessage || `${activeSched?.name || `${activePeriod}교시`} 수업을 시작합니다! 자리에 앉아주세요.`,
-                        item: targetItem || null
-                    });
+                    if (isLunch || isBreak) {
+                        setAlertData({
+                            isOpen: true,
+                            isRestTime: true,
+                            periodName: activeSched?.name || (isLunch ? '점심시간' : '쉬는 시간'),
+                            periodTime: activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '',
+                            customMessage: activeSched?.startMessage || (isLunch ? '점심시간입니다. 즐겁고 맛있는 식사 시간 되세요!' : `${activeSched?.name || '휴식'} 시간입니다.`),
+                            item: null
+                        });
+                    } else {
+                        let targetItem = dayItems.find(it => it.period === activePeriod);
+                        if (!targetItem && dayItems.length > 0) {
+                            targetItem = dayItems[activePeriod - 1] || dayItems[0];
+                        }
+
+                        setAlertData({
+                            isOpen: true,
+                            isRestTime: false,
+                            periodName: activeSched?.name || `${activePeriod}교시`,
+                            periodTime: activeSched ? `${activeSched.startTime} ~ ${activeSched.endTime}` : '',
+                            customMessage: activeSched?.startMessage || `${activeSched?.name || `${activePeriod}교시`} 수업을 시작합니다! 자리에 앉아주세요.`,
+                            item: targetItem || null
+                        });
+                    }
                 }
             }
         }).catch(console.error);
@@ -441,16 +444,7 @@ export default function ViewerPage() {
     const [isAlarmRinging, setIsAlarmRinging] = useState(false);
 
     // Schedule State
-    const [schedules, setSchedules] = useState<ScheduleItem[]>(() => {
-        try {
-            const saved = localStorage.getItem('classbook_schedule_v3');
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-            }
-        } catch (e) { }
-        return defaultSchedule;
-    });
+    const [schedules, setSchedules] = useState<ScheduleItem[]>(() => getStoredSchedule());
 
     const [isScheduleEnabled, setIsScheduleEnabled] = useState(true);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -491,22 +485,38 @@ export default function ViewerPage() {
 
         // Find active or upcoming period
         let activePeriod = 1;
+        let activeSched = schedules[0];
         for (const s of schedules) {
-            const pNum = s.period !== undefined ? s.period : (s.name.includes('아침') ? 0 : (parseInt(s.name.replace(/[^0-9]/g, ''), 10) || 1));
+            const pNum = s.period !== undefined ? s.period : parsePeriodFromName(s.name, 1);
             if (currentTimeStr >= s.startTime && currentTimeStr <= s.endTime) {
                 activePeriod = pNum;
+                activeSched = s;
                 break;
             } else if (currentTimeStr < s.startTime) {
                 activePeriod = pNum;
+                activeSched = s;
                 break;
             } else if (currentTimeStr > s.endTime) {
                 activePeriod = pNum;
+                activeSched = s;
             }
         }
 
         if (currentTimeStr < '09:00') {
             const morningSched = schedules.find(s => s.period === 0 || s.name.includes('아침'));
-            if (morningSched) activePeriod = 0;
+            if (morningSched) {
+                activePeriod = 0;
+                activeSched = morningSched;
+            }
+        }
+
+        if (isLunchSchedule(activeSched?.name || '') || activePeriod === -1) {
+            showToast('현재 점심시간입니다. 맛있는 식사 하세요!');
+            return;
+        }
+
+        if (isBreakSchedule(activeSched?.name || '') || activePeriod === -2) {
+            return;
         }
 
         let targetItem = dayItems.find(it => it.period === activePeriod);
@@ -569,7 +579,7 @@ export default function ViewerPage() {
 
             for (let i = 0; i < schedules.length; i++) {
                 const item = schedules[i];
-                const periodNum = item.period !== undefined ? item.period : (item.name.includes('아침') ? 0 : (parseInt(item.name.replace(/[^0-9]/g, ''), 10) || (i + 1)));
+                const periodNum = item.period !== undefined ? item.period : parsePeriodFromName(item.name, i + 1);
 
                 if (item.startTime === currentTimeStr) {
                     lastTriggeredMinuteRef.current = currentTimeStr;
@@ -577,6 +587,34 @@ export default function ViewerPage() {
                         initAudioContext();
                         if (alarmTypeRef.current === 'beep') playBeep(alarmLoopRef.current);
                         else playMusic(alarmLoopRef.current);
+                    }
+
+                    if (isLunchSchedule(item.name) || periodNum === -1) {
+                        setAlertData({
+                            isOpen: true,
+                            isRestTime: true,
+                            periodName: item.name || '점심시간',
+                            periodTime: `${item.startTime} ~ ${item.endTime}`,
+                            customMessage: item.startMessage || '점심시간입니다. 즐겁고 맛있는 식사 시간 되세요!',
+                            item: null
+                        });
+                        if (isTimerModalOpen) setIsTimerModalOpen(false);
+                        if (isScheduleModalOpen) setIsScheduleModalOpen(false);
+                        return;
+                    }
+
+                    if (isBreakSchedule(item.name) || periodNum === -2) {
+                        setAlertData({
+                            isOpen: true,
+                            isRestTime: true,
+                            periodName: item.name,
+                            periodTime: `${item.startTime} ~ ${item.endTime}`,
+                            customMessage: item.startMessage || `${item.name} 시간입니다.`,
+                            item: null
+                        });
+                        if (isTimerModalOpen) setIsTimerModalOpen(false);
+                        if (isScheduleModalOpen) setIsScheduleModalOpen(false);
+                        return;
                     }
 
                     let planItem: main.WeeklyPlanItem | null = null;
@@ -648,9 +686,9 @@ export default function ViewerPage() {
                     setAlertData({
                         isOpen: true,
                         isRestTime: true,
-                        periodName: item.name || (periodNum === 0 ? '아침활동' : `${periodNum}교시`),
+                        periodName: item.name || (periodNum === 0 ? '아침활동' : (periodNum === -1 ? '점심시간' : `${periodNum}교시`)),
                         periodTime: item.endTime,
-                        customMessage: item.restMessage || "쉬는 시간입니다",
+                        customMessage: item.restMessage || (isLunchSchedule(item.name) ? '5분 준비시간입니다' : '쉬는 시간입니다'),
                         item: null
                     });
 
