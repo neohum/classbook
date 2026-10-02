@@ -12,19 +12,25 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/hashicorp/go-version"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/text/encoding/korean"
+	"golang.org/x/text/transform"
 )
 
 //go:embed parse_weekly_plan.py
 var embeddedWeeklyPlanScript []byte
 
-const AppVersion = "1.2.21"
+const AppVersion = "1.2.22"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
@@ -324,10 +330,14 @@ func (a *App) GetAppVersion() string {
 }
 
 var (
-	user32                  = syscall.NewLazyDLL("user32.dll")
-	procReleaseCapture      = user32.NewProc("ReleaseCapture")
-	procSendMessageW        = user32.NewProc("SendMessageW")
-	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
+	user32                     = syscall.NewLazyDLL("user32.dll")
+	procReleaseCapture         = user32.NewProc("ReleaseCapture")
+	procSendMessageW           = user32.NewProc("SendMessageW")
+	procGetForegroundWindow    = user32.NewProc("GetForegroundWindow")
+	kernel32                   = syscall.NewLazyDLL("kernel32.dll")
+	procGetLogicalDrives       = kernel32.NewProc("GetLogicalDrives")
+	procGetDriveTypeW          = kernel32.NewProc("GetDriveTypeW")
+	procGetVolumeInformationW  = kernel32.NewProc("GetVolumeInformationW")
 )
 
 const (
@@ -532,6 +542,384 @@ func (a *App) DeleteBook(title string) error {
 	}
 
 	return os.RemoveAll(bookDir)
+}
+
+// DeleteMultipleBooks removes multiple books in batch
+func (a *App) DeleteMultipleBooks(titles []string) error {
+	imagesDir := getImagesDir()
+	cleanImagesDir := filepath.Clean(imagesDir)
+
+	for _, title := range titles {
+		title = strings.TrimSpace(title)
+		if title == "" {
+			continue
+		}
+		bookDir := filepath.Clean(filepath.Join(cleanImagesDir, title))
+		if strings.HasPrefix(bookDir, cleanImagesDir) && bookDir != cleanImagesDir {
+			_ = os.RemoveAll(bookDir)
+		}
+	}
+	return nil
+}
+
+// ==========================================
+// USB & Textbook Auto-Discovery Features
+// ==========================================
+
+type UsbTextbookCandidate struct {
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Drive         string `json:"drive"`
+	Type          string `json:"type"` // "image_folder" or "pdf"
+	SourcePath    string `json:"sourcePath"`
+	PageCount     int    `json:"pageCount"`
+	FileSize      int64  `json:"fileSize"`
+	FileSizeStr   string `json:"fileSizeStr"`
+	Description   string `json:"description"`
+	IsRecommended bool   `json:"isRecommended"`
+}
+
+var pageFilenameRegex = regexp.MustCompile(`^(?:p(?:age)?[-_]?)?0*(\d+)\.(?:jpg|jpeg|png|webp)$`)
+
+func isPageFilename(name string) bool {
+	return pageFilenameRegex.MatchString(strings.ToLower(name))
+}
+
+func decodeCP949(b []byte) string {
+	r := transform.NewReader(bytes.NewReader(b), korean.EUCKR.NewDecoder())
+	d, err := io.ReadAll(r)
+	if err == nil {
+		return string(d)
+	}
+	return string(b)
+}
+
+func formatCandidateFileSize(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+func naturalSortFiles(files []string) {
+	re := regexp.MustCompile(`\d+`)
+	sort.Slice(files, func(i, j int) bool {
+		a, b := files[i], files[j]
+		numA := re.FindString(a)
+		numB := re.FindString(b)
+		if numA != "" && numB != "" && numA != numB {
+			vA, errA := strconv.Atoi(numA)
+			vB, errB := strconv.Atoi(numB)
+			if errA == nil && errB == nil && vA != vB {
+				return vA < vB
+			}
+		}
+		return a < b
+	})
+}
+
+func getVolumeLabel(root string) string {
+	rootPtr, err := syscall.UTF16PtrFromString(root)
+	if err != nil {
+		return ""
+	}
+	var volNameBuf [260]uint16
+	r, _, _ := procGetVolumeInformationW.Call(
+		uintptr(unsafe.Pointer(rootPtr)),
+		uintptr(unsafe.Pointer(&volNameBuf[0])),
+		uintptr(len(volNameBuf)),
+		0, 0, 0, 0, 0,
+	)
+	if r != 0 {
+		return syscall.UTF16ToString(volNameBuf[:])
+	}
+	return ""
+}
+
+func scanFolderForCandidates(rootPath string, driveLabel string) []UsbTextbookCandidate {
+	var candidates []UsbTextbookCandidate
+
+	driveHint := ""
+	autorunPath := filepath.Join(rootPath, "autorun.inf")
+	if rawBytes, err := os.ReadFile(autorunPath); err == nil {
+		decoded := decodeCP949(rawBytes)
+		lines := strings.Split(decoded, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(strings.ToUpper(line), "LABEL=") {
+				driveHint = strings.TrimSpace(line[6:])
+			}
+		}
+	}
+	if driveHint == "" {
+		if entries, err := os.ReadDir(rootPath); err == nil {
+			for _, e := range entries {
+				if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".exe") {
+					name := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+					name = strings.ReplaceAll(name, "_전자저작물", "")
+					name = strings.ReplaceAll(name, "_DVD", "")
+					name = strings.ReplaceAll(name, "_", " ")
+					driveHint = strings.TrimSpace(name)
+					break
+				}
+			}
+		}
+	}
+
+	_ = filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		rel, _ := filepath.Rel(rootPath, path)
+		depth := strings.Count(rel, string(os.PathSeparator))
+		if depth > 6 {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		nameLower := strings.ToLower(info.Name())
+		pathLower := strings.ToLower(path)
+
+		if info.IsDir() {
+			if strings.HasPrefix(nameLower, "$") || nameLower == "system volume information" ||
+				nameLower == "node_modules" || strings.HasPrefix(nameLower, "jre") ||
+				nameLower == "fonts" || strings.Contains(pathLower, "popup") ||
+				strings.Contains(pathLower, "quiz") || strings.Contains(pathLower, "media") ||
+				strings.Contains(pathLower, "chapters") || strings.Contains(pathLower, "assets") ||
+				strings.Contains(pathLower, "common\\images") || strings.Contains(pathLower, "common/images") ||
+				strings.Contains(pathLower, "libs") {
+				return filepath.SkipDir
+			}
+
+			entries, errRead := os.ReadDir(path)
+			if errRead == nil {
+				var imgFiles []string
+				pageLikeCount := 0
+				for _, e := range entries {
+					if !e.IsDir() {
+						ext := strings.ToLower(filepath.Ext(e.Name()))
+						if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" {
+							imgFiles = append(imgFiles, e.Name())
+							if isPageFilename(e.Name()) {
+								pageLikeCount++
+							}
+						}
+					}
+				}
+
+				if len(imgFiles) >= 20 && float64(pageLikeCount)/float64(len(imgFiles)) >= 0.7 {
+					if !strings.Contains(nameLower, "btn") && !strings.Contains(nameLower, "icon") &&
+						!strings.Contains(nameLower, "thumb") {
+						naturalSortFiles(imgFiles)
+
+						title := info.Name()
+						isRecommended := false
+						if strings.EqualFold(title, "pp_print") || strings.EqualFold(title, "print") {
+							title = "교과서 (인쇄용 원본)"
+							if driveHint != "" {
+								title = fmt.Sprintf("%s (인쇄용 교과서)", driveHint)
+							}
+							isRecommended = true
+						} else if strings.EqualFold(title, "pp_bg") || strings.EqualFold(title, "bg") {
+							title = "교과서 (전자책 배경)"
+							if driveHint != "" {
+								title = fmt.Sprintf("%s (전자책 배경)", driveHint)
+							}
+						} else if driveHint != "" {
+							title = fmt.Sprintf("%s (%s)", driveHint, title)
+						}
+
+						desc := fmt.Sprintf("%s ~ %s (%d장)", imgFiles[0], imgFiles[len(imgFiles)-1], len(imgFiles))
+						if isRecommended {
+							desc += " [추천: 고화질 인쇄 원본]"
+						}
+
+						candidates = append(candidates, UsbTextbookCandidate{
+							ID:            fmt.Sprintf("img_%s", filepath.Base(path)),
+							Title:         title,
+							Drive:         driveLabel,
+							Type:          "image_folder",
+							SourcePath:    path,
+							PageCount:     len(imgFiles),
+							FileSize:      0,
+							FileSizeStr:   fmt.Sprintf("%d 쪽", len(imgFiles)),
+							Description:   desc,
+							IsRecommended: isRecommended,
+						})
+					}
+				}
+			}
+			return nil
+		}
+
+		if strings.EqualFold(filepath.Ext(path), ".pdf") {
+			if strings.Contains(pathLower, "popup") || strings.Contains(nameLower, "사용설명서") ||
+				strings.Contains(nameLower, "license") || strings.Contains(nameLower, "매뉴얼") ||
+				strings.Contains(nameLower, "출처") || strings.Contains(nameLower, "연간지도계획") {
+				return nil
+			}
+			isTextbookName := strings.Contains(nameLower, "교과서") || strings.Contains(nameLower, "지도서") ||
+				strings.Contains(nameLower, "익힘") || strings.Contains(nameLower, "활동") || strings.Contains(nameLower, "수익")
+
+			if info.Size() > 15*1024*1024 || isTextbookName {
+				cleanTitle := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
+				candidates = append(candidates, UsbTextbookCandidate{
+					ID:            fmt.Sprintf("pdf_%s", cleanTitle),
+					Title:         cleanTitle,
+					Drive:         driveLabel,
+					Type:          "pdf",
+					SourcePath:    path,
+					PageCount:     0,
+					FileSize:      info.Size(),
+					FileSizeStr:   formatCandidateFileSize(info.Size()),
+					Description:   fmt.Sprintf("교과서 PDF 파일 (%s)", formatCandidateFileSize(info.Size())),
+					IsRecommended: false,
+				})
+			}
+		}
+		return nil
+	})
+
+	return candidates
+}
+
+// ScanUsbTextbooks automatically detects connected USB drives and scans for textbook materials
+func (a *App) ScanUsbTextbooks() ([]UsbTextbookCandidate, error) {
+	mask, _, _ := procGetLogicalDrives.Call()
+	var allCandidates []UsbTextbookCandidate
+
+	for i := 0; i < 26; i++ {
+		if (mask & (1 << i)) != 0 {
+			letter := string(rune('A' + i))
+			root := letter + ":\\"
+
+			rootPtr, err := syscall.UTF16PtrFromString(root)
+			if err != nil {
+				continue
+			}
+			dt, _, _ := procGetDriveTypeW.Call(uintptr(unsafe.Pointer(rootPtr)))
+
+			// Check if Removable (2) or CD-ROM (5)
+			if dt == 2 || dt == 5 {
+				vol := strings.ToUpper(getVolumeLabel(root))
+				// Skip cloud virtual mounted drives
+				if strings.Contains(vol, "MYBOX") || strings.Contains(vol, "GOOGLE") ||
+					strings.Contains(vol, "ONEDRIVE") || strings.Contains(vol, "DROPBOX") ||
+					strings.Contains(vol, "ICLOUD") {
+					continue
+				}
+
+				driveLabel := fmt.Sprintf("%s (%s)", root, vol)
+				if vol == "" {
+					driveLabel = root
+				}
+
+				found := scanFolderForCandidates(root, driveLabel)
+				allCandidates = append(allCandidates, found...)
+			}
+		}
+	}
+
+	// Sort candidates: recommended first, then image_folder, then pdf
+	sort.SliceStable(allCandidates, func(i, j int) bool {
+		if allCandidates[i].IsRecommended != allCandidates[j].IsRecommended {
+			return allCandidates[i].IsRecommended
+		}
+		if allCandidates[i].Type != allCandidates[j].Type {
+			return allCandidates[i].Type == "image_folder"
+		}
+		return allCandidates[i].Title < allCandidates[j].Title
+	})
+
+	return allCandidates, nil
+}
+
+// ScanFolderForTextbooks scans a specific user-selected folder or drive
+func (a *App) ScanFolderForTextbooks(folderPath string) ([]UsbTextbookCandidate, error) {
+	if strings.TrimSpace(folderPath) == "" {
+		return nil, fmt.Errorf("폴더 경로가 비어있습니다")
+	}
+	candidates := scanFolderForCandidates(folderPath, folderPath)
+	return candidates, nil
+}
+
+// SelectDirectoryDialog opens a native folder selection dialog
+func (a *App) SelectDirectoryDialog(title string) (string, error) {
+	if title == "" {
+		title = "폴더 선택"
+	}
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: title,
+	})
+}
+
+// ImportBookFromImageFolder imports sequential page images from a folder directly into textbook storage
+func (a *App) ImportBookFromImageFolder(title string, folderPath string, pageOffset int) error {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return fmt.Errorf("교과서 제목이 비어있습니다")
+	}
+	// Sanitize title for valid directory name
+	reg := regexp.MustCompile(`[\\/:*?"<>|]`)
+	title = reg.ReplaceAllString(title, "_")
+
+	imagesDir := getImagesDir()
+	bookDir := filepath.Join(imagesDir, title)
+	if err := os.MkdirAll(bookDir, 0755); err != nil {
+		return fmt.Errorf("교과서 폴더 생성 실패: %w", err)
+	}
+
+	entries, err := os.ReadDir(folderPath)
+	if err != nil {
+		return fmt.Errorf("폴더 읽기 실패: %w", err)
+	}
+
+	var imgFiles []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			ext := strings.ToLower(filepath.Ext(e.Name()))
+			if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" {
+				imgFiles = append(imgFiles, e.Name())
+			}
+		}
+	}
+
+	if len(imgFiles) == 0 {
+		return fmt.Errorf("폴더 내에 이미지 파일이 없습니다")
+	}
+
+	naturalSortFiles(imgFiles)
+
+	for idx, imgName := range imgFiles {
+		srcPath := filepath.Join(folderPath, imgName)
+		dstPath := filepath.Join(bookDir, fmt.Sprintf("page_%d.jpg", idx+1))
+
+		srcFile, err := os.Open(srcPath)
+		if err != nil {
+			return fmt.Errorf("이미지 읽기 실패 (%s): %w", imgName, err)
+		}
+		dstFile, err := os.Create(dstPath)
+		if err != nil {
+			srcFile.Close()
+			return fmt.Errorf("이미지 저장 실패 (%s): %w", dstPath, err)
+		}
+		_, err = io.Copy(dstFile, srcFile)
+		srcFile.Close()
+		dstFile.Close()
+		if err != nil {
+			return fmt.Errorf("이미지 복사 실패: %w", err)
+		}
+	}
+
+	return a.EnsureBookDirWithOffset(title, len(imgFiles), pageOffset)
 }
 
 // ==========================================

@@ -6,6 +6,8 @@ export function CheckForUpdate():Promise<main.UpdateStatus>;
 
 export function DeleteBook(arg1:string):Promise<void>;
 
+export function DeleteMultipleBooks(arg1:Array<string>):Promise<void>;
+
 export function DownloadAndInstallUpdate(arg1:string,arg2:string):Promise<void>;
 
 export function EnsureBookDir(arg1:string,arg2:number):Promise<void>;
@@ -28,6 +30,8 @@ export function GetWeeklyPlanRawBase64(arg1:string):Promise<string>;
 
 export function Greet(arg1:string):Promise<string>;
 
+export function ImportBookFromImageFolder(arg1:string,arg2:string,arg3:number):Promise<void>;
+
 export function ParseWeeklyPlanFile(arg1:string):Promise<main.WeeklyPlanResult>;
 
 export function ReadFileBase64(arg1:string):Promise<string>;
@@ -39,6 +43,12 @@ export function SaveBellSchedules(arg1:string):Promise<void>;
 export function SavePageImage(arg1:string,arg2:number,arg3:string):Promise<void>;
 
 export function SaveWeeklyPlan(arg1:main.WeeklyPlanResult):Promise<void>;
+
+export function ScanFolderForTextbooks(arg1:string):Promise<Array<main.UsbTextbookCandidate>>;
+
+export function ScanUsbTextbooks():Promise<Array<main.UsbTextbookCandidate>>;
+
+export function SelectDirectoryDialog(arg1:string):Promise<string>;
 
 export function SelectMultiplePdfsDialog():Promise<Array<string>>;
 

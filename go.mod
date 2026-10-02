@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/hashicorp/go-version v1.8.0
 	github.com/wailsapp/wails/v2 v2.11.0
+	golang.org/x/text v0.30.0
 )
 
 require (
@@ -34,5 +35,4 @@ require (
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
 )

@@ -124,12 +124,7 @@ function WeeklyPlanScheduleModalContent({
             const isLunch = isLunchSchedule(s.name) || s.period === -1;
             const isBreak = !isLunch && (isBreakSchedule(s.name) || s.period === -2);
 
-            // Omit minor transition breaks (like 5분 준비시간) from the timetable grid rows
-            if (isBreak) {
-                return;
-            }
-
-            const p = isLunch ? -1 : (s.period !== undefined ? s.period : parsePeriodFromName(s.name));
+            const p = isLunch ? -1 : (isBreak ? -2 : (s.period !== undefined ? s.period : parsePeriodFromName(s.name)));
             if (seenPeriods.has(p)) return;
             seenPeriods.add(p);
 
@@ -138,14 +133,15 @@ function WeeklyPlanScheduleModalContent({
             let orderVal = p;
             if (p === 0) orderVal = 0;
             else if (isLunch) orderVal = 4.5;
+            else if (isBreak) orderVal = 4.8;
             else if (p > 0) orderVal = p;
 
             periodList.push({
                 period: p,
-                name: s.name || (p === 0 ? '아침활동' : (isLunch ? '점심시간' : `${p}교시`)),
+                name: s.name || (p === 0 ? '아침활동' : (isLunch ? '점심시간' : (isBreak ? '5분 준비시간' : `${p}교시`))),
                 time: timeStr,
                 isLunch,
-                isBreak: false,
+                isBreak,
                 orderVal
             });
         });
@@ -172,7 +168,7 @@ function WeeklyPlanScheduleModalContent({
             const lunchSched = storedSchedules.find(s => isLunchSchedule(s.name) || s.period === -1);
             const lunchTimeStr = lunchSched
                 ? ((lunchSched.startTime && lunchSched.endTime) ? `${lunchSched.startTime}~${lunchSched.endTime}` : (lunchSched.startTime || ''))
-                : '12:10~13:00';
+                : '12:10~12:55';
             periodList.push({
                 period: -1,
                 name: lunchSched?.name || '점심시간',
@@ -182,6 +178,23 @@ function WeeklyPlanScheduleModalContent({
                 orderVal: 4.5
             });
             seenPeriods.add(-1);
+        }
+
+        // Ensure 5-minute prep break (period -2) exists
+        if (!seenPeriods.has(-2)) {
+            const prepSched = storedSchedules.find(s => !isLunchSchedule(s.name) && (isBreakSchedule(s.name) || s.period === -2));
+            const prepTimeStr = prepSched
+                ? ((prepSched.startTime && prepSched.endTime) ? `${prepSched.startTime}~${prepSched.endTime}` : (prepSched.startTime || ''))
+                : '12:55~13:00';
+            periodList.push({
+                period: -2,
+                name: prepSched?.name || '5분 준비시간',
+                time: prepTimeStr,
+                isLunch: false,
+                isBreak: true,
+                orderVal: 4.8
+            });
+            seenPeriods.add(-2);
         }
 
         // Add any teachable periods from effectivePlan (1~6교시)
@@ -947,7 +960,7 @@ function WeeklyPlanScheduleModalContent({
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-200 text-xs">
-                                            {schedulePeriods.map(({ period, name, time, isLunch }) => {
+                                            {schedulePeriods.map(({ period, name, time, isLunch, isBreak }) => {
                                                 if (isLunch) {
                                                     return (
                                                         <tr key={`lunch-${period}`} className="bg-amber-50/30 hover:bg-amber-50/60 transition-colors">
@@ -970,6 +983,35 @@ function WeeklyPlanScheduleModalContent({
                                                                 <td key={day} className="p-2 border-r last:border-r-0 border-amber-200/50 align-middle text-center bg-amber-50/20">
                                                                     <div className="h-16 rounded-xl border border-dashed border-amber-300/80 bg-amber-50/50 flex items-center justify-center text-amber-700/80 select-none">
                                                                         <span className="text-xs font-bold tracking-wide">점심시간 (급식)</span>
+                                                                    </div>
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    );
+                                                }
+
+                                                if (isBreak) {
+                                                    return (
+                                                        <tr key={`break-${period}`} className="bg-sky-50/20 hover:bg-sky-50/50 transition-colors">
+                                                            {/* 교시 Label: 5분 준비시간 */}
+                                                            <td className="py-2.5 px-2 text-center font-black text-sky-800 bg-sky-100/70 border-r border-sky-200/80 select-none">
+                                                                <div className="flex flex-col items-center">
+                                                                    <span className="text-xs sm:text-sm font-extrabold text-sky-900 bg-sky-200/90 px-2 py-0.5 rounded-lg border border-sky-300 shadow-2xs">
+                                                                        {name}
+                                                                    </span>
+                                                                    {time && (
+                                                                        <span className="text-[10px] text-sky-700 font-mono font-medium tracking-tight mt-0.5">
+                                                                            {time}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+
+                                                            {/* Days (Mon - Fri): ALWAYS EMPTY SLOT (빈칸) */}
+                                                            {DAY_LABELS.map(day => (
+                                                                <td key={day} className="p-2 border-r last:border-r-0 border-sky-200/50 align-middle text-center bg-sky-50/10">
+                                                                    <div className="h-14 rounded-xl border border-dashed border-sky-300/80 bg-sky-50/40 flex items-center justify-center text-sky-700/80 select-none">
+                                                                        <span className="text-xs font-bold tracking-wide">5분 준비시간 (수업 준비)</span>
                                                                     </div>
                                                                 </td>
                                                             ))}

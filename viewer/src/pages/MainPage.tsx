@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { 
     BookOpen, BookCopy, ArrowRight, X, Maximize, Minimize, 
     Trash2, Plus, Loader2, Calendar, FolderOpen, Upload, 
-    SlidersHorizontal, Bell, Sparkles, CheckCircle2, Clock, Play
+    SlidersHorizontal, Bell, Sparkles, CheckCircle2, Clock, Play,
+    CheckSquare, Square, Check
 } from 'lucide-react';
 import { Quit, WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { 
-    DeleteBook, SelectMultiplePdfsDialog, ReadFileBase64, 
+    DeleteBook, DeleteMultipleBooks, SelectMultiplePdfsDialog, ReadFileBase64, 
     EnsureBookDirWithOffset, SavePageImage, GetTextbooks, GetAppVersion,
     GetWatchFolder, SelectWatchFolderDialog, GetLatestWeeklyPlan, SelectWeeklyPlanFileDialog,
     GetBellSchedules
@@ -18,6 +19,7 @@ import pdfWorkerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 import { detectPageNumberFromText, detectPageNumberFromCanvas } from '../utils/ocrOffsetDetector';
 import PageOffsetAdjustModal from '../components/PageOffsetAdjustModal';
+import AddBookModal from '../components/AddBookModal';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import WeeklyPlanScheduleModal, { DEFAULT_MORNING_TOPICS } from '../components/WeeklyPlanScheduleModal';
 import ScheduleConfigModal, { 
@@ -106,6 +108,13 @@ export default function MainPage() {
         initialOffset: number;
         detectedOffset: number | null;
     } | null>(null);
+
+    // Add Book Modal State (PDF direct vs USB auto scan)
+    const [isAddBookModalOpen, setIsAddBookModalOpen] = useState(false);
+
+    // Multi-selection for bulk deletion
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
 
     // Toast notification
     const [toastMessage, setToastMessage] = useState<string>('');
@@ -448,10 +457,45 @@ export default function MainPage() {
         try {
             await DeleteBook(bookId);
             setTextbooks(prev => prev.filter(b => b.id !== bookId));
+            setSelectedBookIds(prev => prev.filter(id => id !== bookId));
             showToast("교과서가 삭제되었습니다.");
         } catch (error) {
             console.error("Failed to delete book:", error);
             alert(`교과서 삭제에 실패했습니다: ${error}`);
+        }
+    };
+
+    const handleDeleteSelected = async () => {
+        if (selectedBookIds.length === 0) return;
+        if (!window.confirm(`선택한 ${selectedBookIds.length}개의 교과서를 완전히 삭제하시겠습니까?\n(로컬 파일이 삭제되며 복구할 수 없습니다)`)) {
+            return;
+        }
+
+        try {
+            await DeleteMultipleBooks(selectedBookIds);
+            const count = selectedBookIds.length;
+            setTextbooks(prev => prev.filter(b => !selectedBookIds.includes(b.id)));
+            setSelectedBookIds([]);
+            setIsSelectionMode(false);
+            showToast(`${count}개의 교과서가 삭제되었습니다.`);
+        } catch (error) {
+            console.error("Failed to delete selected books:", error);
+            alert(`선택 교과서 삭제에 실패했습니다: ${error}`);
+        }
+    };
+
+    const toggleSelectBook = (e: React.MouseEvent, bookId: string) => {
+        e.stopPropagation();
+        setSelectedBookIds(prev => 
+            prev.includes(bookId) ? prev.filter(id => id !== bookId) : [...prev, bookId]
+        );
+    };
+
+    const toggleSelectAllBooks = () => {
+        if (selectedBookIds.length === textbooks.length) {
+            setSelectedBookIds([]);
+        } else {
+            setSelectedBookIds(textbooks.map(b => b.id));
         }
     };
 
@@ -615,6 +659,103 @@ export default function MainPage() {
             setIsConverting(false);
             setConvertProgress({ current: 0, total: 0, title: '', statusText: '' });
         }
+    };
+
+    const handleImportPdfCandidate = async (pdfPath: string, customTitle: string) => {
+        setIsConverting(true);
+        try {
+            const title = customTitle || pdfPath.split('\\').pop()?.split('/').pop()?.replace('.pdf', '') || '새 교과서';
+            setConvertProgress({ current: 0, total: 1, title, statusText: 'PDF 파일 읽는 중...' });
+
+            const base64Data = await ReadFileBase64(pdfPath);
+            const raw = window.atob(base64Data);
+            const uint8Array = new Uint8Array(raw.length);
+            for (let j = 0; j < raw.length; j++) {
+                uint8Array[j] = raw.charCodeAt(j);
+            }
+
+            const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+            const pdf = await loadingTask.promise;
+            const numPages = pdf.numPages;
+
+            setConvertProgress({ current: 0, total: numPages, title, statusText: '페이지 변환 및 쪽수 검사 중...' });
+
+            const scale = 1.5;
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { alpha: false });
+
+            let detectedOffset: number | null = null;
+
+            for (let j = 1; j <= numPages; j++) {
+                const page = await pdf.getPage(j);
+                const viewport = page.getViewport({ scale });
+
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                if (ctx) {
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    const renderContext = {
+                        canvasContext: ctx,
+                        viewport: viewport,
+                    } as any;
+                    await page.render(renderContext).promise;
+
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                    await SavePageImage(title, j, dataUrl);
+
+                    if (detectedOffset === null && j >= 4 && j <= 12) {
+                        const printedFromText = await detectPageNumberFromText(page, viewport);
+                        if (printedFromText !== null && printedFromText > 0) {
+                            detectedOffset = j - printedFromText;
+                        } else {
+                            const isEven = j % 2 === 0;
+                            const printedFromOcr = await detectPageNumberFromCanvas(canvas, isEven);
+                            if (printedFromOcr !== null && printedFromOcr > 0) {
+                                detectedOffset = j - printedFromOcr;
+                            }
+                        }
+                    }
+                }
+
+                setConvertProgress({ 
+                    current: j, 
+                    total: numPages, 
+                    title, 
+                    statusText: detectedOffset !== null ? `변환 중... (감지된 쪽수 오프셋: ${detectedOffset})` : '변환 중...' 
+                });
+            }
+
+            const finalOffset = detectedOffset !== null ? detectedOffset : 0;
+            await EnsureBookDirWithOffset(title, numPages, finalOffset);
+
+            const updatedBooks = await GetTextbooks();
+            setTextbooks(updatedBooks);
+
+            setOffsetModalBook({
+                id: title,
+                title,
+                numPages,
+                initialOffset: finalOffset,
+                detectedOffset,
+            });
+            showToast(`'${title}' 교과서가 추가되었습니다.`);
+        } catch (err: any) {
+            console.error("Failed to import PDF candidate:", err);
+            alert(`PDF 추가 중 오류 발생: ${err.message || err}`);
+        } finally {
+            setIsConverting(false);
+            setConvertProgress({ current: 0, total: 0, title: '', statusText: '' });
+        }
+    };
+
+    const handleBookAddedFromModal = async (book: { id: string; title: string; numPages: number; initialOffset: number; detectedOffset: number | null }) => {
+        const updatedBooks = await GetTextbooks();
+        setTextbooks(updatedBooks);
+        setOffsetModalBook(book);
+        showToast(`'${book.title}' 교과서가 추가되었습니다. 실제 쪽수를 맞춰주세요.`);
     };
 
     // Quick navigation from weekly plan to book page
@@ -925,7 +1066,57 @@ export default function MainPage() {
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Selection / Batch Delete Bar */}
+                        {isSelectionMode || selectedBookIds.length > 0 ? (
+                            <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl animate-in fade-in">
+                                <button
+                                    onClick={toggleSelectAllBooks}
+                                    className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                                >
+                                    {selectedBookIds.length === textbooks.length && textbooks.length > 0 ? (
+                                        <CheckSquare className="w-3.5 h-3.5 text-rose-600" />
+                                    ) : (
+                                        <Square className="w-3.5 h-3.5 text-slate-400" />
+                                    )}
+                                    <span>전체 {selectedBookIds.length === textbooks.length && textbooks.length > 0 ? '해제' : '선택'}</span>
+                                </button>
+
+                                <span className="text-xs font-bold text-rose-800">
+                                    선택됨: <strong>{selectedBookIds.length}</strong>개
+                                </span>
+
+                                <button
+                                    onClick={handleDeleteSelected}
+                                    disabled={selectedBookIds.length === 0}
+                                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all shadow-xs cursor-pointer"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>선택 삭제 ({selectedBookIds.length}개)</span>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        setIsSelectionMode(false);
+                                        setSelectedBookIds([]);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer ml-1"
+                                    title="선택 모드 종료"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setIsSelectionMode(true)}
+                                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                                title="불필요한 교과서를 체크하여 한 번에 삭제"
+                            >
+                                <CheckSquare className="w-3.5 h-3.5 text-slate-500" />
+                                <span>선택 삭제</span>
+                            </button>
+                        )}
+
                         <button
                             onClick={async () => {
                                 try {
@@ -945,7 +1136,7 @@ export default function MainPage() {
                         </button>
 
                         <button
-                            onClick={handleAddBook}
+                            onClick={() => setIsAddBookModalOpen(true)}
                             disabled={isConverting}
                             className="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-xl shadow-md shadow-violet-500/20 transition-all font-bold text-sm flex items-center gap-2 cursor-pointer"
                         >
@@ -957,7 +1148,7 @@ export default function MainPage() {
                             ) : (
                                 <>
                                     <Plus className="w-4 h-4" />
-                                    <span>새 교과서 추가 (PDF)</span>
+                                    <span>새 교과서 추가</span>
                                 </>
                             )}
                         </button>
@@ -985,19 +1176,53 @@ export default function MainPage() {
                     const lastPageStr = localStorage.getItem(progressKey);
                     const lastPage = lastPageStr ? parseInt(lastPageStr, 10) : null;
                     const offset = book.pageOffset || 0;
+                    const isSelected = selectedBookIds.includes(book.id);
 
                     return (
                         <div
                             key={book.id}
-                            onClick={() => navigate(`/viewer/${encodeURIComponent(book.id)}`)}
-                            className="group cursor-pointer bg-white rounded-3xl shadow-sm border border-slate-200/80 overflow-hidden hover:shadow-xl hover:border-violet-300 transition-all duration-300 hover:-translate-y-1 flex flex-col h-full relative"
+                            onClick={(e) => {
+                                if (isSelectionMode) {
+                                    toggleSelectBook(e, book.id);
+                                } else {
+                                    navigate(`/viewer/${encodeURIComponent(book.id)}`);
+                                }
+                            }}
+                            className={`group cursor-pointer bg-white rounded-3xl shadow-sm border overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-full relative ${
+                                isSelected ? 'border-rose-400 ring-2 ring-rose-400/40 shadow-rose-100' : 'border-slate-200/80 hover:border-violet-300'
+                            }`}
                         >
                             {/* Book cover area */}
                             <div className={`${book.color} aspect-[3/4] flex items-center justify-center relative overflow-hidden`}>
                                 <PdfThumbnail bookId={book.id} />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
 
-                                {/* Offset setting button on cover */}
+                                {/* Selection Checkbox (Top Left) */}
+                                <button
+                                    onClick={(e) => toggleSelectBook(e, book.id)}
+                                    className={`absolute top-3 left-3 z-10 p-2 rounded-xl backdrop-blur-md transition-all shadow-sm ${
+                                        isSelected 
+                                            ? 'bg-rose-600 text-white opacity-100 ring-2 ring-white' 
+                                            : (isSelectionMode 
+                                                ? 'bg-black/50 hover:bg-black/70 text-white opacity-100' 
+                                                : 'bg-black/40 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100')
+                                    }`}
+                                    title={isSelected ? "선택 해제" : "삭제할 교과서 선택"}
+                                >
+                                    {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                                </button>
+
+                                {/* Delete Button on cover (Top Right) */}
+                                <button
+                                    onClick={(e) => handleDelete(e, book.id)}
+                                    className="absolute top-3 right-3 p-2 bg-black/40 hover:bg-red-600 text-white rounded-xl backdrop-blur-md transition-all shadow-sm opacity-80 group-hover:opacity-100 z-10"
+                                    title="교과서 삭제"
+                                    aria-label={`${book.title} 삭제`}
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+
+                                {/* Offset setting button on cover (Bottom Left) */}
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -1009,21 +1234,11 @@ export default function MainPage() {
                                             detectedOffset: null,
                                         });
                                     }}
-                                    className="absolute top-3 left-3 px-2.5 py-1.5 bg-black/40 hover:bg-black/70 text-white rounded-xl text-xs font-semibold backdrop-blur-md transition-all flex items-center gap-1.5 shadow-sm opacity-90 group-hover:opacity-100"
+                                    className="absolute bottom-3 left-3 px-2.5 py-1.5 bg-black/50 hover:bg-black/80 text-white rounded-xl text-xs font-semibold backdrop-blur-md transition-all flex items-center gap-1.5 shadow-sm opacity-90 group-hover:opacity-100 z-10"
                                     title="실제 쪽수 맞추기 / 오프셋 조정"
                                 >
                                     <SlidersHorizontal className="w-3.5 h-3.5" />
                                     <span>쪽수 맞춤</span>
-                                </button>
-
-                                {/* Delete Button on cover */}
-                                <button
-                                    onClick={(e) => handleDelete(e, book.id)}
-                                    className="absolute top-3 right-3 p-2 bg-black/40 hover:bg-red-600 text-white rounded-xl backdrop-blur-md transition-all shadow-sm opacity-80 group-hover:opacity-100"
-                                    title="교과서 삭제"
-                                    aria-label={`${book.title} 삭제`}
-                                >
-                                    <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
 
@@ -1079,6 +1294,16 @@ export default function MainPage() {
                     }}
                 />
             )}
+
+            {/* Add Book Modal (PDF vs USB Auto Scan) */}
+            <AddBookModal
+                isOpen={isAddBookModalOpen}
+                onClose={() => setIsAddBookModalOpen(false)}
+                onAddFromPdf={handleAddBook}
+                onImportPdfCandidate={handleImportPdfCandidate}
+                onBookAdded={handleBookAddedFromModal}
+                existingTitles={textbooks.map(b => b.title)}
+            />
 
             {/* Weekly Plan Schedule Modal */}
             <WeeklyPlanScheduleModal

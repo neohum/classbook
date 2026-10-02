@@ -10,6 +10,10 @@ export function DeleteBook(arg1) {
   return window['go']['main']['App']['DeleteBook'](arg1);
 }
 
+export function DeleteMultipleBooks(arg1) {
+  return window['go']['main']['App']['DeleteMultipleBooks'](arg1);
+}
+
 export function DownloadAndInstallUpdate(arg1, arg2) {
   return window['go']['main']['App']['DownloadAndInstallUpdate'](arg1, arg2);
 }
@@ -54,6 +58,10 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
+export function ImportBookFromImageFolder(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ImportBookFromImageFolder'](arg1, arg2, arg3);
+}
+
 export function ParseWeeklyPlanFile(arg1) {
   return window['go']['main']['App']['ParseWeeklyPlanFile'](arg1);
 }
@@ -76,6 +84,18 @@ export function SavePageImage(arg1, arg2, arg3) {
 
 export function SaveWeeklyPlan(arg1) {
   return window['go']['main']['App']['SaveWeeklyPlan'](arg1);
+}
+
+export function ScanFolderForTextbooks(arg1) {
+  return window['go']['main']['App']['ScanFolderForTextbooks'](arg1);
+}
+
+export function ScanUsbTextbooks() {
+  return window['go']['main']['App']['ScanUsbTextbooks']();
+}
+
+export function SelectDirectoryDialog(arg1) {
+  return window['go']['main']['App']['SelectDirectoryDialog'](arg1);
 }
 
 export function SelectMultiplePdfsDialog() {

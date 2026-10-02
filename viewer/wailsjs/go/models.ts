@@ -52,6 +52,36 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class UsbTextbookCandidate {
+	    id: string;
+	    title: string;
+	    drive: string;
+	    type: string;
+	    sourcePath: string;
+	    pageCount: number;
+	    fileSize: number;
+	    fileSizeStr: string;
+	    description: string;
+	    isRecommended: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new UsbTextbookCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.drive = source["drive"];
+	        this.type = source["type"];
+	        this.sourcePath = source["sourcePath"];
+	        this.pageCount = source["pageCount"];
+	        this.fileSize = source["fileSize"];
+	        this.fileSizeStr = source["fileSizeStr"];
+	        this.description = source["description"];
+	        this.isRecommended = source["isRecommended"];
+	    }
+	}
 	export class WeeklyPlanItem {
 	    period: number;
 	    subject: string;

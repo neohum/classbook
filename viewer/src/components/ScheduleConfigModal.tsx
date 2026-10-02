@@ -24,8 +24,8 @@ export function isLunchSchedule(name: string): boolean {
 export function isBreakSchedule(name: string): boolean {
     if (!name) return false;
     const lower = name.toLowerCase().replace(/\s+/g, '');
-    return isLunchSchedule(name) || 
-           lower.includes('준비시간') || 
+    if (isLunchSchedule(name)) return false;
+    return lower.includes('준비시간') || 
            lower.includes('쉬는시간') || 
            lower.includes('휴식') || 
            lower.includes('청소');
@@ -72,7 +72,8 @@ export const DEFAULT_SCHEDULE: ScheduleItem[] = [
     { id: '2', period: 2, name: '2교시', startTime: '09:50', endTime: '10:30', startMessage: '2교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
     { id: '3', period: 3, name: '3교시', startTime: '10:40', endTime: '11:20', startMessage: '3교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
     { id: '4', period: 4, name: '4교시', startTime: '11:30', endTime: '12:10', startMessage: '4교시 수업을 시작합니다.', restMessage: '점심시간입니다. 맛있는 점심 드세요!' },
-    { id: 'lunch', period: -1, name: '점심시간', startTime: '12:10', endTime: '13:00', startMessage: '점심시간입니다. 즐겁고 안전한 점심시간 되세요!', restMessage: '5교시 수업 준비 시간입니다' },
+    { id: 'lunch', period: -1, name: '점심시간', startTime: '12:10', endTime: '12:55', startMessage: '점심시간입니다. 즐겁고 안전한 점심시간 되세요!', restMessage: '5분 준비시간입니다' },
+    { id: 'prep', period: -2, name: '5분 준비시간', startTime: '12:55', endTime: '13:00', startMessage: '5교시 시작 5분 전입니다. 수업 준비를 해주세요.', restMessage: '5교시 수업 시작합니다' },
     { id: '5', period: 5, name: '5교시', startTime: '13:00', endTime: '13:40', startMessage: '5교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
     { id: '6', period: 6, name: '6교시', startTime: '13:50', endTime: '14:30', startMessage: '6교시 수업을 시작합니다.', restMessage: '쉬는 시간입니다' },
 ];
