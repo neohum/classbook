@@ -46,7 +46,7 @@ def main():
         print(f"Error: Installer not found at {local_installer}")
         sys.exit(1)
 
-    notes = "주학습 계획안 날짜 기준 자동 선택, 이전/다음 주안 이동 네비게이션, 아침활동 일괄/개별 편집 및 요일별 날짜 표시 (v1.2.24)"
+    notes = "쉬는 시간 동안 시종 문구 및 다음 교과서·학습 쪽수 안내 화면 표시, 계획안 및 좌우 사이드 메뉴 오늘 수업 시작 버튼 연동 (v1.2.25)"
 
     # Prepare AWS CLI environment
     cmd_env = os.environ.copy()

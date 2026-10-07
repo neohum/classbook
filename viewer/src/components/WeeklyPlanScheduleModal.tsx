@@ -3,7 +3,7 @@ import {
     X, Calendar, FolderOpen, Upload, BookOpen, Clock, ArrowRight, 
     CheckCircle2, FileText, RotateCw, Plus, 
     Trash2, Edit2, Square, Save, Check, LayoutGrid, List,
-    ChevronLeft, ChevronRight, Sparkles
+    ChevronLeft, ChevronRight, Sparkles, Play
 } from 'lucide-react';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { main } from '../../wailsjs/go/models';
@@ -20,6 +20,7 @@ import HwpHtmlViewerModal from './HwpHtmlViewerModal';
 import ErrorBoundary from './ErrorBoundary';
 import { resolveBookForSubject } from '../utils/bookResolver';
 import { getStoredSchedule, isLunchSchedule, isBreakSchedule, parsePeriodFromName, type ScheduleItem } from './ScheduleConfigModal';
+import { getCurrentClassStatus } from '../utils/scheduleHelper';
 
 interface Props {
     isOpen: boolean;
@@ -30,6 +31,7 @@ interface Props {
     onWatchFolderChanged: (newFolder: string) => void;
     onGoToBook: (bookId: string, pageNumber: number, item?: any) => void;
     onGoToBlank?: (subject: string, topic: string, period?: number) => void;
+    onStartTodayClass?: () => void;
 }
 
 const DAY_LABELS = ['월', '화', '수', '목', '금'];
@@ -84,7 +86,8 @@ function WeeklyPlanScheduleModalContent({
     onPlanUpdated,
     onWatchFolderChanged,
     onGoToBook,
-    onGoToBlank
+    onGoToBlank,
+    onStartTodayClass
 }: Props) {
     // Fallback to localStorage if plan is null or empty
     const effectivePlan: main.WeeklyPlanResult | null = useMemo(() => {
@@ -341,6 +344,34 @@ function WeeklyPlanScheduleModalContent({
     const [showQuickBlank, setShowQuickBlank] = useState(false);
     const [quickBlankSubject, setQuickBlankSubject] = useState('활동 수업');
     const [quickBlankTopic, setQuickBlankTopic] = useState('');
+
+    const handleStartTodayClass = () => {
+        onClose();
+        if (onStartTodayClass) {
+            onStartTodayClass();
+            return;
+        }
+        const status = getCurrentClassStatus(new Date(), storedSchedules, effectivePlan);
+        if (status.isRestTime) {
+            if (status.nextItem) {
+                if (status.nextItem.matchedBookId === 'blank' || status.nextItem.period === 0) {
+                    if (onGoToBlank) {
+                        onGoToBlank(status.nextItem.subject, status.nextItem.topic, status.nextItem.period);
+                    }
+                } else if (onGoToBook) {
+                    onGoToBook(status.nextItem.matchedBookId, status.nextItem.startPage || 1, status.nextItem);
+                }
+            }
+        } else if (status.item) {
+            if (status.item.matchedBookId === 'blank' || status.item.period === 0) {
+                if (onGoToBlank) {
+                    onGoToBlank(status.item.subject, status.item.topic, status.item.period);
+                }
+            } else if (onGoToBook) {
+                onGoToBook(status.item.matchedBookId, status.item.startPage || 1, status.item);
+            }
+        }
+    };
 
     // Fetch installed textbooks
     useEffect(() => {
@@ -776,6 +807,16 @@ function WeeklyPlanScheduleModalContent({
                                     <span>요일별 상세</span>
                                 </button>
                             </div>
+
+                            {/* 오늘 수업 시작 버튼 */}
+                            <button
+                                onClick={handleStartTodayClass}
+                                className="px-3.5 py-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl font-black text-xs flex items-center gap-1.5 transition-all shadow-sm shadow-violet-500/30 cursor-pointer active:scale-95 shrink-0"
+                                title="주학습계획안에 따라 오늘 현재 시간에 맞는 수업(또는 쉬는 시간 안내)을 바로 시작합니다"
+                            >
+                                <Play className="w-3.5 h-3.5 fill-white text-white" />
+                                <span>오늘 수업 시작</span>
+                            </button>
 
                             {/* 빈화면 바로 열기 버튼 */}
                             <button
