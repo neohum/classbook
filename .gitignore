@@ -52,3 +52,6 @@ book/images/*
 Thumbs.db
 __pycache__/
 *.pyc
+
+# Nested repository
+edulinker_pen_go/
