@@ -102,6 +102,9 @@ Section
     !insertmacro wails.files
     File "..\..\..\parse_weekly_plan.py"
 
+    ; Grant write/modify permissions on the installation directory to Users group so settings and textbooks can be saved without UAC
+    nsExec::ExecToStack 'icacls "$INSTDIR" /grant "Users":(OI)(CI)M /T'
+
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 

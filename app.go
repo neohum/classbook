@@ -120,11 +120,14 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	logToFile("app.startup called")
 
 	// Load settings from application directory
 	appDir := getAppDir()
+	logToFile("app.startup: appDir = %s", appDir)
 	a.settingsPath = filepath.Join(appDir, "settings.json")
 	a.loadSettings()
+	logToFile("app.startup: settings loaded (PlanWatchFolder=%s)", a.settings.PlanWatchFolder)
 
 	// Check and set default watch folder if empty
 	if a.settings.PlanWatchFolder == "" {
@@ -138,14 +141,18 @@ func (a *App) startup(ctx context.Context) {
 
 	// Load existing plan if available
 	a.loadLatestPlan()
+	logToFile("app.startup: loadLatestPlan completed")
 
 	// Start folder watcher
 	go a.startPlanFolderWatcher()
+	logToFile("app.startup: folder watcher started")
 
 	// Immediate check for updates after frontend is ready
 	go func() {
 		time.Sleep(2 * time.Second)
+		logToFile("app.startup: running 2-second update check")
 		status := a.CheckForUpdate()
+		logToFile("app.startup: update check result: hasUpdate=%v, latest=%s", status != nil && status.HasUpdate, func() string { if status != nil { return status.LatestVer }; return "none" }())
 		if status != nil && status.HasUpdate {
 			runtime.EventsEmit(a.ctx, "update-available", status)
 		}
@@ -276,37 +283,40 @@ func (a *App) CheckForUpdate() *UpdateStatus {
 }
 
 func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
+	logToFile("DownloadAndInstallUpdate starting: url=%s, tag=%s", downloadUrl, tagName)
 	tempDir := os.TempDir()
-	installerPath := filepath.Join(tempDir, fmt.Sprintf("classbook-setup-%s.exe", tagName))
+	cleanTag := strings.TrimPrefix(tagName, "v")
+	installerPath := filepath.Join(tempDir, fmt.Sprintf("classbook-setup-v%s.exe", cleanTag))
 
 	// Clean up previous temp installer
 	os.Remove(installerPath)
 
 	out, err := os.Create(installerPath)
 	if err != nil {
-		fmt.Println("Failed to create temp installer file:", err)
+		logToFile("Failed to create temp installer file: %v", err)
 		return
 	}
 	defer out.Close()
 
 	resp, err := http.Get(downloadUrl)
 	if err != nil {
-		fmt.Println("Failed to download installer:", err)
+		logToFile("Failed to download installer: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	_, err = io.Copy(out, resp.Body)
+	written, err := io.Copy(out, resp.Body)
 	if err != nil {
-		fmt.Println("Failed to save installer:", err)
+		logToFile("Failed to save installer: %v", err)
 		return
 	}
-
 	out.Close()
+	logToFile("Installer downloaded successfully (%d bytes): %s", written, installerPath)
 
 	// Launch installer silently (/S) with administrator privileges via PowerShell Start-Process
 	// -Verb RunAs provides required UAC elevation without CreateProcess error 740
 	// /S executes NSIS in silent mode without user intervention
+	logToFile("Launching installer silently with RunAs: %s", installerPath)
 	cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
 		fmt.Sprintf("Start-Process -FilePath '%s' -ArgumentList '/S' -Verb RunAs", installerPath))
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -314,7 +324,7 @@ func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
 	}
 	err = cmd.Start()
 	if err != nil {
-		fmt.Println("Failed to start installer via PowerShell:", err)
+		logToFile("Failed to start installer via PowerShell: %v", err)
 		// Direct execution fallback with /S
 		fallbackCmd := exec.Command(installerPath, "/S")
 		fallbackCmd.SysProcAttr = &syscall.SysProcAttr{
@@ -324,7 +334,8 @@ func (a *App) DownloadAndInstallUpdate(downloadUrl, tagName string) {
 	}
 
 	// Grace period before current process exits so the installer can take over
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
+	logToFile("Exiting current process for installer takeover")
 	os.Exit(0)
 }
 
