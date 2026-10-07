@@ -3,7 +3,7 @@
   "releaseDate": "2026-09-30",
   "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.25/classbook-setup-v1.2.25.exe",
   "installerName": "classbook-setup-v1.2.25.exe",
-  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.25.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20261007%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20261007T231437Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6e6177fce68914a736a72152e7134bb5460a2c0d4f7a016238e2c0eaf3e11c8b",
+  "wasabiPresignedUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.25.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=MVD2DQVDV5ODXBIJ9H31%2F20261007%2Fap-northeast-1%2Fs3%2Faws4_request&X-Amz-Date=20261007T231511Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1994b940278dfe4b331c36d0176aa8f309e2c036e5e98e883b10b05f16826d28",
   "wasabiDirectUrl": "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.25.exe",
   "notes": "쉬는 시간 동안 시종 문구 및 다음 교과서·학습 쪽수 안내 화면 표시, 계획안 및 좌우 사이드 메뉴 오늘 수업 시작 버튼 연동 (v1.2.25)"
 }

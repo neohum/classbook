@@ -64,7 +64,8 @@ def main():
         "aws", "s3", "cp", local_installer, f"s3://{bucket}/{installer_s3_key}",
         "--endpoint-url", endpoint,
         "--content-type", "application/vnd.microsoft.portable-executable",
-        "--acl", "public-read"
+        "--acl", "public-read",
+        "--no-verify-ssl"
     ], env=cmd_env, capture_output=True, text=True)
 
     if res_installer.returncode != 0:
@@ -76,7 +77,8 @@ def main():
     res_presign = subprocess.run([
         "aws", "s3", "presign", f"s3://{bucket}/{installer_s3_key}",
         "--endpoint-url", endpoint,
-        "--expires-in", "604800"
+        "--expires-in", "604800",
+        "--no-verify-ssl"
     ], env=cmd_env, capture_output=True, text=True)
     presigned_url = res_presign.stdout.strip() if res_presign.returncode == 0 else ""
 
@@ -126,7 +128,8 @@ def main():
         "aws", "s3", "cp", local_version_file, f"s3://{bucket}/{version_s3_key}",
         "--endpoint-url", endpoint,
         "--content-type", "application/json",
-        "--acl", "public-read"
+        "--acl", "public-read",
+        "--no-verify-ssl"
     ], env=cmd_env, capture_output=True, text=True)
 
     if res_version.returncode != 0:
