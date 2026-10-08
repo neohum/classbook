@@ -34,7 +34,7 @@ var embeddedWeeklyPlanScript []byte
 //go:embed convert_pdf.py
 var embeddedConvertPdfScript []byte
 
-const AppVersion = "1.2.25"
+const AppVersion = "1.2.26"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"

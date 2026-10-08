@@ -1552,6 +1552,16 @@ export default function ViewerPage() {
                         <ChevronLeft className="w-5 h-5 -ml-0.5" />
                     </button>
 
+                    {/* 다음 페이지 */}
+                    <button
+                        onClick={goToNextPage}
+                        disabled={rightPage === null || rightPage >= numPages}
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-800/40 hover:bg-violet-600/80 backdrop-blur-md disabled:opacity-20 disabled:pointer-events-none text-white rounded-xl flex items-center justify-center transition-all shadow-sm border border-white/10 hover:border-violet-400/50 cursor-pointer active:scale-95"
+                        title="다음 쪽"
+                    >
+                        <ChevronRight className="w-5 h-5 -mr-0.5" />
+                    </button>
+
                     {/* 목록으로 */}
                     <button
                         onClick={goBack}
@@ -1724,6 +1734,16 @@ export default function ViewerPage() {
                         title="다음 쪽"
                     >
                         <ChevronRight className="w-5 h-5 -mr-0.5" />
+                    </button>
+
+                    {/* 이전 페이지 */}
+                    <button
+                        onClick={goToPrevPage}
+                        disabled={currentPage <= 1}
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-800/40 hover:bg-violet-600/80 backdrop-blur-md disabled:opacity-20 disabled:pointer-events-none text-white rounded-xl flex items-center justify-center transition-all shadow-sm border border-white/10 hover:border-violet-400/50 cursor-pointer active:scale-95"
+                        title="이전 쪽"
+                    >
+                        <ChevronLeft className="w-5 h-5 -ml-0.5" />
                     </button>
 
                     {/* 목록으로 */}
