@@ -37,14 +37,22 @@ var embeddedConvertPdfScript []byte
 const AppVersion = "1.2.26"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
+const R2VersionUrl = "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/version.json"
 const WasabiVersionUrl = "https://s3.ap-northeast-1.wasabisys.com/edulinkermessenger/exports/classbook/version.json"
 
-type WasabiVersionInfo struct {
-	Version     string `json:"version"`
-	ReleaseDate string `json:"releaseDate"`
-	DownloadUrl string `json:"downloadUrl"`
-	Notes       string `json:"notes"`
+type VersionInfo struct {
+	Version                 string `json:"version"`
+	ReleaseDate             string `json:"releaseDate"`
+	DownloadUrl             string `json:"downloadUrl"`
+	InstallerName           string `json:"installerName,omitempty"`
+	R2PresignedUrl          string `json:"r2PresignedUrl,omitempty"`
+	R2PresignedUrlEdulinker string `json:"r2PresignedUrlEdulinker,omitempty"`
+	R2DirectUrl             string `json:"r2DirectUrl,omitempty"`
+	WasabiPresignedUrl      string `json:"wasabiPresignedUrl,omitempty"`
+	Notes                   string `json:"notes"`
 }
+
+type WasabiVersionInfo = VersionInfo
 
 // AppSettings stores user preferences
 type AppSettings struct {
@@ -258,7 +266,31 @@ func (a *App) CheckForUpdate() *UpdateStatus {
 		}
 	}
 
-	// 3. Check Wasabi S3 version.json
+	// 3. Check Cloudflare R2 version.json
+	r2Resp, err := client.Get(R2VersionUrl)
+	if err == nil && r2Resp.StatusCode == http.StatusOK {
+		defer r2Resp.Body.Close()
+		var r2Info VersionInfo
+		if json.NewDecoder(r2Resp.Body).Decode(&r2Info) == nil {
+			r2VerStr := strings.TrimPrefix(r2Info.Version, "v")
+			r2Ver, errR2 := version.NewVersion(r2VerStr)
+			if errR2 == nil && errCurr == nil && r2Ver.GreaterThan(currentVer) {
+				dlUrl := r2Info.DownloadUrl
+				if dlUrl == "" {
+					dlUrl = r2Info.R2PresignedUrl
+				}
+				if dlUrl != "" {
+					return &UpdateStatus{
+						HasUpdate:   true,
+						LatestVer:   r2Info.Version,
+						DownloadUrl: dlUrl,
+					}
+				}
+			}
+		}
+	}
+
+	// 4. Check Wasabi S3 version.json (Fallback / Legacy)
 	wasabiResp, err := client.Get(WasabiVersionUrl)
 	if err == nil && wasabiResp.StatusCode == http.StatusOK {
 		defer wasabiResp.Body.Close()
@@ -267,10 +299,16 @@ func (a *App) CheckForUpdate() *UpdateStatus {
 			wasabiVerStr := strings.TrimPrefix(wasabiInfo.Version, "v")
 			wasabiVer, errW := version.NewVersion(wasabiVerStr)
 			if errW == nil && errCurr == nil && wasabiVer.GreaterThan(currentVer) {
-				return &UpdateStatus{
-					HasUpdate:   true,
-					LatestVer:   wasabiInfo.Version,
-					DownloadUrl: wasabiInfo.DownloadUrl,
+				dlUrl := wasabiInfo.DownloadUrl
+				if dlUrl == "" {
+					dlUrl = wasabiInfo.WasabiPresignedUrl
+				}
+				if dlUrl != "" {
+					return &UpdateStatus{
+						HasUpdate:   true,
+						LatestVer:   wasabiInfo.Version,
+						DownloadUrl: dlUrl,
+					}
 				}
 			}
 		}
