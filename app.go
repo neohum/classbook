@@ -1698,3 +1698,73 @@ func (a *App) startPlanFolderWatcher() {
 		}
 	}
 }
+
+// ==========================================
+// Textbook Knowledge Overlay & Review Queue
+// ==========================================
+
+func sanitizeBookFilename(bookId string) string {
+	clean := strings.TrimSpace(bookId)
+	if clean == "" {
+		return "default"
+	}
+	reg := regexp.MustCompile(`[\\/:*?"<>|]`)
+	return reg.ReplaceAllString(clean, "_")
+}
+
+// SaveKnowledgeAnnotations persists a textbook's .cbk-notes.json bundle inside book/images/<bookId>/annotations.cbk-notes.json
+func (a *App) SaveKnowledgeAnnotations(bookId string, bundleJSON string) error {
+	cleanBook := sanitizeBookFilename(bookId)
+	if strings.TrimSpace(bundleJSON) == "" {
+		return fmt.Errorf("bundleJSON is empty")
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(bundleJSON), &raw); err != nil {
+		return fmt.Errorf("invalid knowledge bundle JSON: %w", err)
+	}
+
+	imagesDir := getImagesDir()
+	bookDir := filepath.Join(imagesDir, cleanBook)
+	if err := os.MkdirAll(bookDir, 0755); err != nil {
+		return err
+	}
+	targetFile := filepath.Join(bookDir, "annotations.cbk-notes.json")
+	return os.WriteFile(targetFile, []byte(bundleJSON), 0644)
+}
+
+// LoadKnowledgeAnnotations loads a textbook's .cbk-notes.json bundle if present
+func (a *App) LoadKnowledgeAnnotations(bookId string) (string, error) {
+	cleanBook := sanitizeBookFilename(bookId)
+	imagesDir := getImagesDir()
+	targetFile := filepath.Join(imagesDir, cleanBook, "annotations.cbk-notes.json")
+	data, err := os.ReadFile(targetFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
+// SaveReviewQueue persists the student's review queue JSON to the app directory
+func (a *App) SaveReviewQueue(queueJSON string) error {
+	appDir := getAppDir()
+	targetFile := filepath.Join(appDir, "review_queue.json")
+	return os.WriteFile(targetFile, []byte(queueJSON), 0644)
+}
+
+// LoadReviewQueue loads the student's review queue JSON from the app directory
+func (a *App) LoadReviewQueue() (string, error) {
+	appDir := getAppDir()
+	targetFile := filepath.Join(appDir, "review_queue.json")
+	data, err := os.ReadFile(targetFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "[]", nil
+		}
+		return "[]", err
+	}
+	return string(data), nil
+}
+

@@ -137,3 +137,32 @@ export function StartDrag() {
 export function UpdateBookOffset(arg1, arg2) {
   return window['go']['main']['App']['UpdateBookOffset'](arg1, arg2);
 }
+
+export function SaveKnowledgeAnnotations(arg1, arg2) {
+  if (typeof window !== 'undefined' && window['go']?.['main']?.['App']?.['SaveKnowledgeAnnotations']) {
+    return window['go']['main']['App']['SaveKnowledgeAnnotations'](arg1, arg2);
+  }
+  return Promise.resolve();
+}
+
+export function LoadKnowledgeAnnotations(arg1) {
+  if (typeof window !== 'undefined' && window['go']?.['main']?.['App']?.['LoadKnowledgeAnnotations']) {
+    return window['go']['main']['App']['LoadKnowledgeAnnotations'](arg1);
+  }
+  return Promise.resolve('');
+}
+
+export function SaveReviewQueue(arg1) {
+  if (typeof window !== 'undefined' && window['go']?.['main']?.['App']?.['SaveReviewQueue']) {
+    return window['go']['main']['App']['SaveReviewQueue'](arg1);
+  }
+  return Promise.resolve();
+}
+
+export function LoadReviewQueue() {
+  if (typeof window !== 'undefined' && window['go']?.['main']?.['App']?.['LoadReviewQueue']) {
+    return window['go']['main']['App']['LoadReviewQueue']();
+  }
+  return Promise.resolve('[]');
+}
+

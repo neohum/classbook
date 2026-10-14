@@ -69,3 +69,12 @@ export function SetWatchFolder(arg1:string):Promise<void>;
 export function StartDrag():Promise<void>;
 
 export function UpdateBookOffset(arg1:string,arg2:number):Promise<void>;
+
+export function SaveKnowledgeAnnotations(arg1:string,arg2:string):Promise<void>;
+
+export function LoadKnowledgeAnnotations(arg1:string):Promise<string>;
+
+export function SaveReviewQueue(arg1:string):Promise<void>;
+
+export function LoadReviewQueue():Promise<string>;
+
