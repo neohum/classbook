@@ -1,24 +1,38 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, Plus, BookOpen, Minus, Calendar, Coffee, Sparkles, BookCopy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, BookOpen, Minus, Calendar, Sparkles, BookCopy, Bookmark, Edit3, HelpCircle } from 'lucide-react';
 import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, WindowMinimise, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
-import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatchFolder, UpdateBookOffset, GetTextbooks } from '../../wailsjs/go/main/App';
+import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatchFolder, UpdateBookOffset, GetTextbooks, LoadKnowledgeAnnotations, SaveKnowledgeAnnotations } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
+import {
+    createLessonDismissKey,
+    getTodayDateKey,
+    isLessonBannerDismissed,
+    resolvePhysicalPageWithOffset
+} from '../components/LessonTopicCenterBanner';
 import WeeklyPlanScheduleModal, { DEFAULT_MORNING_TOPICS } from '../components/WeeklyPlanScheduleModal';
 import ScheduleConfigModal, { 
     getStoredSchedule, 
-    DEFAULT_SCHEDULE, 
     isLunchSchedule, 
     isBreakSchedule, 
     parsePeriodFromName, 
     type ScheduleItem 
 } from '../components/ScheduleConfigModal';
 import BookSwitcherModal from '../components/BookSwitcherModal';
+import KnowledgeOverlayLayer from '../components/KnowledgeOverlayLayer';
+import KnowledgePopoverCard from '../components/KnowledgePopoverCard';
+import ReviewQueueDrawer from '../components/ReviewQueueDrawer';
+import TeacherAnnotationModal from '../components/TeacherAnnotationModal';
+import { useReviewQueue } from '../hooks/useReviewQueue';
+import type { CanvasRect, KnowledgeAnnotation, NormalizedBBox, ReviewQueueItem } from '../types/knowledgeOverlay';
+import {
+    deserializeKnowledgeBundle,
+    getDefaultPageAnnotations,
+    serializeKnowledgeBundle
+} from '../utils/knowledgeTermMatcher';
 import { resolveBookForSubject } from '../utils/bookResolver';
 import { getCurrentClassStatus } from '../utils/scheduleHelper';
-
-const defaultSchedule = DEFAULT_SCHEDULE;
 
 let sharedAudioContext: AudioContext | null = null;
 const initAudioContext = () => {
@@ -139,7 +153,17 @@ const playMusic = (loop: boolean) => {
     }
 };
 
-function PageRenderer({ bookId, pageNumber, scale }: { bookId: string, pageNumber: number, scale: number }) {
+function PageRenderer({
+    bookId,
+    pageNumber,
+    scale,
+    children
+}: {
+    bookId: string;
+    pageNumber: number;
+    scale: number;
+    children?: React.ReactNode;
+}) {
     const [isRendered, setIsRendered] = useState(false);
     const [imgUrl, setImgUrl] = useState('');
 
@@ -177,6 +201,7 @@ function PageRenderer({ bookId, pageNumber, scale }: { bookId: string, pageNumbe
                     }}
                 />
             )}
+            {children}
         </div>
     );
 }
@@ -187,12 +212,66 @@ export default function ViewerPage() {
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [numPages, setNumPages] = useState<number>(0);
     const [inputPage, setInputPage] = useState<string>("1");
-    const [images, setImages] = useState<string[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const scale = 1.0;
 
     // Page Offset sync
     const [pageOffset, setPageOffset] = useState<number>(0);
+
+    // Knowledge Overlay & Review Queue States
+    const [isKnowledgeOverlayEnabled, setIsKnowledgeOverlayEnabled] = useState<boolean>(true);
+    const [customAnnotations, setCustomAnnotations] = useState<KnowledgeAnnotation[]>([]);
+    const [selectedAnnotation, setSelectedAnnotation] = useState<KnowledgeAnnotation | null>(null);
+    const [selectedAnchorRect, setSelectedAnchorRect] = useState<CanvasRect | null>(null);
+    const [isReviewDrawerOpen, setIsReviewDrawerOpen] = useState<boolean>(false);
+    const [isTeacherEditMode, setIsTeacherEditMode] = useState<boolean>(false);
+    const [isTeacherModalOpen, setIsTeacherModalOpen] = useState<boolean>(false);
+    const [editingAnnotation, setEditingAnnotation] = useState<KnowledgeAnnotation | null>(null);
+    const [draftTargetPage, setDraftTargetPage] = useState<number>(1);
+    const [draftBBox, setDraftBBox] = useState<NormalizedBBox | null>(null);
+
+    const {
+        items: reviewQueueItems,
+        pendingCount: reviewPendingCount,
+        addToQueue: addAnnotationToQueue,
+        toggleComplete: toggleReviewItemComplete,
+        removeItem: removeReviewItem,
+        isAnnotationSaved
+    } = useReviewQueue(bookId);
+
+    // Load saved teacher/custom knowledge annotations for current book
+    useEffect(() => {
+        if (!bookId || bookId === 'blank') {
+            setCustomAnnotations([]);
+            return;
+        }
+        const localKey = `classbook_knowledge_bundle_${bookId}`;
+        const localRaw = localStorage.getItem(localKey);
+        if (localRaw) {
+            const parsed = deserializeKnowledgeBundle(localRaw);
+            if (parsed.valid && parsed.bundle) {
+                setCustomAnnotations(parsed.bundle.annotations);
+            }
+        }
+        LoadKnowledgeAnnotations(bookId)
+            .then((bundleJson) => {
+                if (!bundleJson) return;
+                const parsed = deserializeKnowledgeBundle(bundleJson);
+                if (parsed.valid && parsed.bundle) {
+                    setCustomAnnotations(parsed.bundle.annotations);
+                    localStorage.setItem(localKey, bundleJson);
+                }
+            })
+            .catch(() => {});
+    }, [bookId]);
+
+    const persistBookAnnotations = (nextList: KnowledgeAnnotation[]) => {
+        setCustomAnnotations(nextList);
+        if (!bookId || bookId === 'blank') return;
+        const bundleJson = serializeKnowledgeBundle(bookId, nextList);
+        localStorage.setItem(`classbook_knowledge_bundle_${bookId}`, bundleJson);
+        SaveKnowledgeAnnotations(bookId, bundleJson).catch(() => {});
+    };
 
     // Weekly Plan States
     const [currentPlan, setCurrentPlan] = useState<main.WeeklyPlanResult | null>(null);
@@ -724,14 +803,24 @@ export default function ViewerPage() {
                         }
                     }
 
-                    setAlertData({
-                        isOpen: true,
-                        isRestTime: false,
-                        periodName: item.name || (periodNum === 0 ? '아침활동' : `${periodNum}교시`),
-                        periodTime: `${item.startTime} ~ ${item.endTime}`,
-                        customMessage: item.startMessage || `${periodNum === 0 ? '아침활동' : `${periodNum}교시`} 수업을 시작합니다! 자리에 앉아주세요.`,
-                        item: planItem
-                    });
+                    const resolvedPeriodName = item.name || (periodNum === 0 ? '아침활동' : `${periodNum}교시`);
+                    const dismissKey = createLessonDismissKey(
+                        getTodayDateKey(now),
+                        resolvedPeriodName,
+                        planItem?.subject,
+                        planItem?.startPage
+                    );
+
+                    if (!isLessonBannerDismissed(dismissKey)) {
+                        setAlertData({
+                            isOpen: true,
+                            isRestTime: false,
+                            periodName: resolvedPeriodName,
+                            periodTime: `${item.startTime} ~ ${item.endTime}`,
+                            customMessage: item.startMessage || `${periodNum === 0 ? '아침활동' : `${periodNum}교시`} 수업을 시작합니다! 자리에 앉아주세요.`,
+                            item: planItem
+                        });
+                    }
 
                     if (isTimerModalOpen) setIsTimerModalOpen(false);
                     if (isScheduleModalOpen) setIsScheduleModalOpen(false);
@@ -1226,6 +1315,44 @@ export default function ViewerPage() {
     const leftPage = currentPage;
     const rightPage = currentPage + 1 <= numPages ? currentPage + 1 : null;
 
+    // Merge built-in page annotations with teacher/custom annotations for visible spread pages
+    const visibleAnnotations = useMemo(() => {
+        if (!bookId || bookId === 'blank') return [];
+        const leftDefaults = getDefaultPageAnnotations(bookId, leftPage);
+        const rightDefaults = rightPage ? getDefaultPageAnnotations(bookId, rightPage) : [];
+        const customMap = new Map(customAnnotations.map((a) => [a.id, a]));
+        const merged: KnowledgeAnnotation[] = [...customAnnotations];
+        for (const def of [...leftDefaults, ...rightDefaults]) {
+            if (!customMap.has(def.id)) {
+                merged.push(def);
+            }
+        }
+        return merged;
+    }, [bookId, leftPage, rightPage, customAnnotations]);
+
+    const handleJumpToReviewItem = (item: ReviewQueueItem) => {
+        const targetPhysical = resolvePhysicalPageWithOffset(item.pageNumber, 0, numPages);
+        setCurrentPage(targetPhysical);
+        const matchedAnn =
+            visibleAnnotations.find((a) => a.id === item.annotationId) ||
+            customAnnotations.find((a) => a.id === item.annotationId) || {
+                id: item.annotationId,
+                bookId: item.bookId,
+                pageNumber: item.pageNumber,
+                term: item.term,
+                category: item.category,
+                partOfSpeech: item.partOfSpeech,
+                difficulty: item.difficulty,
+                basicSummary: item.basicSummary,
+                deepDive: item.deepDive,
+                bbox: item.bbox
+            };
+        setSelectedAnnotation(matchedAnn);
+        setSelectedAnchorRect(null);
+        setIsReviewDrawerOpen(false);
+        showToast(`[${item.term}] ${item.pageNumber}쪽 지식 위치로 이동했습니다.`);
+    };
+
     const handlePageSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const parsed = parseInt(inputPage, 10);
@@ -1478,8 +1605,10 @@ export default function ViewerPage() {
             <header
                 onPointerDown={handleHeaderPointerDown}
                 style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                className="h-16 flex-shrink-0 border-b border-slate-800 flex items-center justify-center px-4 bg-slate-900/90 backdrop-blur-md z-40 touch-none select-none cursor-move relative"
+                className="h-16 flex-shrink-0 border-b border-slate-800 flex items-center justify-between px-4 bg-slate-900/90 backdrop-blur-md z-40 touch-none select-none cursor-move relative"
             >
+                <div className="hidden lg:flex items-center gap-2 min-w-[200px]" />
+
                 <div className="flex items-center gap-4">
                     {bookId === 'blank' ? (
                         <div className="flex items-center gap-3">
@@ -1524,6 +1653,70 @@ export default function ViewerPage() {
                         </>
                     )}
                 </div>
+
+                {/* Top Right Toolbar: Knowledge Overlay Toggle, Review Queue Drawer, Teacher Annotation Editor */}
+                {bookId !== 'blank' ? (
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const next = !isKnowledgeOverlayEnabled;
+                                setIsKnowledgeOverlayEnabled(next);
+                                if (!next) setSelectedAnnotation(null);
+                            }}
+                            data-testid="toolbar-toggle-knowledge-overlay"
+                            className={`px-3 py-1.5 rounded-full border text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                isKnowledgeOverlayEnabled
+                                    ? 'bg-violet-600/90 border-violet-400 text-white shadow-md shadow-violet-600/30'
+                                    : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-white'
+                            }`}
+                            title="지식 도움말 켜기/끄기"
+                        >
+                            <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span className="hidden sm:inline">
+                                {isKnowledgeOverlayEnabled ? '지식 도움말 켜짐' : '지식 도움말 꺼짐'}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setIsReviewDrawerOpen((prev) => !prev)}
+                            data-testid="toolbar-open-review-queue"
+                            className="px-3 py-1.5 rounded-full border bg-slate-800/90 hover:bg-slate-700 border-slate-700 text-slate-200 text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            title="다음에 보기 복습 큐 열기"
+                        >
+                            <Bookmark className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="hidden sm:inline">복습 큐</span>
+                            {reviewPendingCount > 0 && (
+                                <span
+                                    data-testid="toolbar-review-count-badge"
+                                    className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black text-[10px]"
+                                >
+                                    {reviewPendingCount}
+                                </span>
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setIsTeacherEditMode((prev) => !prev)}
+                            data-testid="toolbar-toggle-teacher-mode"
+                            className={`px-3 py-1.5 rounded-full border text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                isTeacherEditMode
+                                    ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md'
+                                    : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:text-white'
+                            }`}
+                            title="교사용 지식 노트 편집 모드"
+                        >
+                            <Edit3 className="w-3.5 h-3.5 shrink-0" />
+                            <span className="hidden md:inline">
+                                {isTeacherEditMode ? '교사 편집중' : '노트 편집'}
+                            </span>
+                        </button>
+                    </div>
+                ) : (
+                    <div className="min-w-[120px]" />
+                )}
             </header>
 
             <main
@@ -1709,9 +1902,49 @@ export default function ViewerPage() {
                     </div>
                 ) : (
                     <div className="flex items-center justify-center h-full relative z-0">
-                        <PageRenderer bookId={bookId!} pageNumber={leftPage} scale={scale} />
+                        <PageRenderer bookId={bookId!} pageNumber={leftPage} scale={scale}>
+                            <KnowledgeOverlayLayer
+                                enabled={isKnowledgeOverlayEnabled}
+                                pageNumber={leftPage}
+                                annotations={visibleAnnotations}
+                                activeAnnotationId={selectedAnnotation?.id}
+                                isDrawingMode={isDrawingMode}
+                                isTeacherMode={isTeacherEditMode}
+                                scale={scale}
+                                onSelectAnnotation={(ann, rect) => {
+                                    setSelectedAnnotation(ann);
+                                    setSelectedAnchorRect(rect);
+                                }}
+                                onRequestCreateAtBBox={(pageNum, bbox) => {
+                                    setEditingAnnotation(null);
+                                    setDraftTargetPage(pageNum);
+                                    setDraftBBox(bbox);
+                                    setIsTeacherModalOpen(true);
+                                }}
+                            />
+                        </PageRenderer>
                         {rightPage && (
-                            <PageRenderer bookId={bookId!} pageNumber={rightPage} scale={scale} />
+                            <PageRenderer bookId={bookId!} pageNumber={rightPage} scale={scale}>
+                                <KnowledgeOverlayLayer
+                                    enabled={isKnowledgeOverlayEnabled}
+                                    pageNumber={rightPage}
+                                    annotations={visibleAnnotations}
+                                    activeAnnotationId={selectedAnnotation?.id}
+                                    isDrawingMode={isDrawingMode}
+                                    isTeacherMode={isTeacherEditMode}
+                                    scale={scale}
+                                    onSelectAnnotation={(ann, rect) => {
+                                        setSelectedAnnotation(ann);
+                                        setSelectedAnchorRect(rect);
+                                    }}
+                                    onRequestCreateAtBBox={(pageNum, bbox) => {
+                                        setEditingAnnotation(null);
+                                        setDraftTargetPage(pageNum);
+                                        setDraftBBox(bbox);
+                                        setIsTeacherModalOpen(true);
+                                    }}
+                                />
+                            </PageRenderer>
                         )}
                     </div>
                 )}
@@ -2007,10 +2240,81 @@ export default function ViewerPage() {
                 onStartTodayClass={handleStartTodayClass}
             />
 
-            {/* Unified Class & Rest Alert Modal */}
+            {/* Knowledge Popover Card (2-Tier Basic Summary + Deep Dive) */}
+            <KnowledgePopoverCard
+                annotation={selectedAnnotation}
+                anchorRect={selectedAnchorRect}
+                viewportSize={{ width: vp.w, height: vp.h }}
+                isInReviewQueue={
+                    selectedAnnotation ? isAnnotationSaved(selectedAnnotation.id) : false
+                }
+                isTeacherMode={isTeacherEditMode}
+                onClose={() => {
+                    setSelectedAnnotation(null);
+                    setSelectedAnchorRect(null);
+                }}
+                onAddToReviewQueue={(ann) => {
+                    const added = addAnnotationToQueue(ann);
+                    showToast(
+                        added
+                            ? `[${ann.term}] 항목을 '다음에 보기' 복습 큐에 담았습니다.`
+                            : `[${ann.term}] 항목은 이미 복습 큐에 담겨 있습니다.`
+                    );
+                }}
+                onEditAnnotation={(ann) => {
+                    setEditingAnnotation(ann);
+                    setDraftTargetPage(ann.pageNumber);
+                    setDraftBBox(ann.bbox);
+                    setIsTeacherModalOpen(true);
+                }}
+            />
+
+            {/* Review Queue Drawer */}
+            <ReviewQueueDrawer
+                isOpen={isReviewDrawerOpen}
+                bookId={bookId}
+                items={reviewQueueItems}
+                onClose={() => setIsReviewDrawerOpen(false)}
+                onToggleComplete={toggleReviewItemComplete}
+                onRemoveItem={removeReviewItem}
+                onJumpToReviewItem={handleJumpToReviewItem}
+            />
+
+            {/* Teacher Annotation Editor Modal */}
+            <TeacherAnnotationModal
+                isOpen={isTeacherModalOpen}
+                bookId={bookId || '교과서'}
+                pageNumber={draftTargetPage || leftPage}
+                initialAnnotation={editingAnnotation}
+                initialBBox={draftBBox}
+                allAnnotations={visibleAnnotations}
+                onClose={() => {
+                    setIsTeacherModalOpen(false);
+                    setEditingAnnotation(null);
+                }}
+                onSaveAnnotation={(nextList, saved) => {
+                    persistBookAnnotations(nextList);
+                    setSelectedAnnotation(saved);
+                    showToast(`[${saved.term}] 지식 노트가 저장되었습니다.`);
+                }}
+                onDeleteAnnotation={(nextList) => {
+                    persistBookAnnotations(nextList);
+                    setSelectedAnnotation(null);
+                    showToast('지식 노트가 삭제되었습니다.');
+                }}
+                onImportBundle={(imported) => {
+                    persistBookAnnotations(imported);
+                    showToast(`지식 번들(${imported.length}개 항목)을 불러왔습니다.`);
+                }}
+            />
+
+            {/* Unified Class & Rest Alert Modal (Uses compact LessonTopicCenterBanner for class start) */}
             <WeeklyPlanAlertModal
                 isOpen={alertData.isOpen}
                 isRestTime={alertData.isRestTime}
+                compactBannerMode={true}
+                pageOffset={pageOffset}
+                totalPages={numPages}
                 periodName={alertData.periodName}
                 periodTime={alertData.periodTime}
                 customMessage={alertData.customMessage}

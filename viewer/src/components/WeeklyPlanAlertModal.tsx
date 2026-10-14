@@ -1,10 +1,14 @@
 import React from 'react';
 import { BookOpen, X, ArrowRight, Clock, Sparkles, Coffee, Check, Square, Utensils } from 'lucide-react';
 import { main } from '../../wailsjs/go/models';
+import LessonTopicCenterBanner from './LessonTopicCenterBanner';
 
 interface Props {
     isOpen: boolean;
     isRestTime?: boolean;
+    compactBannerMode?: boolean;
+    pageOffset?: number;
+    totalPages?: number;
     periodName?: string;
     periodTime?: string; // e.g. "09:00 ~ 09:40" or "09:40 ~ 09:50"
     customMessage?: string;
@@ -12,7 +16,7 @@ interface Props {
     nextItem?: main.WeeklyPlanItem | null;
     nextPeriodName?: string;
     nextPeriodTime?: string;
-    onClose: () => void;
+    onClose: (dismissKey?: string) => void;
     onGoToBook?: (bookId: string, pageNumber: number) => void;
     onGoToBlank?: (subject?: string, topic?: string, period?: string) => void;
 }
@@ -20,6 +24,9 @@ interface Props {
 export default function WeeklyPlanAlertModal({
     isOpen,
     isRestTime = false,
+    compactBannerMode = true,
+    pageOffset = 0,
+    totalPages = 0,
     periodName = "수업",
     periodTime = "",
     customMessage = "",
@@ -32,6 +39,34 @@ export default function WeeklyPlanAlertModal({
     onGoToBlank
 }: Props) {
     if (!isOpen) return null;
+
+    if (!isRestTime && compactBannerMode) {
+        return (
+            <LessonTopicCenterBanner
+                isOpen={isOpen}
+                lesson={{
+                    periodName,
+                    periodTime,
+                    subject: item?.subject || `${periodName} 수업`,
+                    pageStr: item?.pageStr,
+                    startPage: item?.startPage,
+                    endPage: item?.endPage,
+                    topic: item?.topic,
+                    matchedBookId: item?.matchedBookId,
+                    customMessage
+                }}
+                pageOffset={pageOffset}
+                totalPages={totalPages}
+                onClose={(dismissKey) => onClose(dismissKey)}
+                onJumpToPage={(bookId, printedPage) => {
+                    onGoToBook?.(bookId, printedPage);
+                }}
+                onOpenBlankActivity={(subject, topic, period) => {
+                    onGoToBlank?.(subject, topic, period);
+                }}
+            />
+        );
+    }
 
     // In rest time, the target is the upcoming class
     const upcoming = nextItem || (isRestTime ? item : null);
@@ -55,7 +90,6 @@ export default function WeeklyPlanAlertModal({
     };
 
     const isLunch = periodName.includes('점심');
-    const isPrep = periodName.includes('준비');
 
     return (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-6 md:p-8 animate-in fade-in duration-200">
