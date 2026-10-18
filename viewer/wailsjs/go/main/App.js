@@ -98,6 +98,10 @@ export function SaveWeeklyPlan(arg1) {
   return window['go']['main']['App']['SaveWeeklyPlan'](arg1);
 }
 
+export function SwapWeeklyPlanSlots(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SwapWeeklyPlanSlots'](arg1, arg2, arg3, arg4);
+}
+
 export function ScanFolderForTextbooks(arg1) {
   return window['go']['main']['App']['ScanFolderForTextbooks'](arg1);
 }

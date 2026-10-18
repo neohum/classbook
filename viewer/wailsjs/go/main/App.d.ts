@@ -50,6 +50,8 @@ export function SavePageImage(arg1:string,arg2:number,arg3:string):Promise<void>
 
 export function SaveWeeklyPlan(arg1:main.WeeklyPlanResult):Promise<void>;
 
+export function SwapWeeklyPlanSlots(arg1:string,arg2:number,arg3:string,arg4:number):Promise<main.WeeklyPlanResult>;
+
 export function ScanFolderForTextbooks(arg1:string):Promise<Array<main.UsbTextbookCandidate>>;
 
 export function ScanUsbTextbooks():Promise<Array<main.UsbTextbookCandidate>>;

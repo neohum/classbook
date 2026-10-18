@@ -137,6 +137,7 @@ export namespace main {
 	    weekRange?: string;
 	    weekDates?: Record<string, string>;
 	    schedule: Record<string, Array<WeeklyPlanItem>>;
+	    isCustomized?: boolean;
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -153,6 +154,7 @@ export namespace main {
 	        this.weekRange = source["weekRange"];
 	        this.weekDates = source["weekDates"];
 	        this.schedule = this.convertValues(source["schedule"], Array<WeeklyPlanItem>, true);
+	        this.isCustomized = source["isCustomized"];
 	        this.error = source["error"];
 	    }
 	
@@ -181,6 +183,7 @@ export namespace main {
 	    endDate: string;
 	    weekRange: string;
 	    isCurrent: boolean;
+	    isCustomized?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new WeeklyPlanSummary(source);
@@ -194,6 +197,7 @@ export namespace main {
 	        this.endDate = source["endDate"];
 	        this.weekRange = source["weekRange"];
 	        this.isCurrent = source["isCurrent"];
+	        this.isCustomized = source["isCustomized"];
 	    }
 	}
 

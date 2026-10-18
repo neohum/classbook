@@ -70,6 +70,7 @@ type App struct {
 	watcherStopChan chan struct{}
 	watcherMu       sync.Mutex
 	currentPlan     *WeeklyPlanResult
+	planDB          *WeeklyPlanDB
 }
 
 // getAppDir returns the directory of the running executable or working directory
@@ -133,6 +134,16 @@ func (a *App) startup(ctx context.Context) {
 	// Load settings from application directory
 	appDir := getAppDir()
 	logToFile("app.startup: appDir = %s", appDir)
+
+	// Initialize SQLite Database for Weekly Plans
+	var errDb error
+	a.planDB, errDb = initWeeklyPlanDB()
+	if errDb != nil {
+		logToFile("app.startup: initWeeklyPlanDB error: %v", errDb)
+	} else if a.planDB != nil {
+		logToFile("app.startup: initWeeklyPlanDB success at %s", a.planDB.dbPath)
+	}
+
 	a.settingsPath = filepath.Join(appDir, "settings.json")
 	a.loadSettings()
 	logToFile("app.startup: settings loaded (PlanWatchFolder=%s)", a.settings.PlanWatchFolder)
@@ -1122,24 +1133,26 @@ type WeeklyPlanItem struct {
 }
 
 type WeeklyPlanResult struct {
-	Success   bool                        `json:"success"`
-	Title     string                      `json:"title"`
-	FilePath  string                      `json:"filePath"`
-	StartDate string                      `json:"startDate,omitempty"`
-	EndDate   string                      `json:"endDate,omitempty"`
-	WeekRange string                      `json:"weekRange,omitempty"`
-	WeekDates map[string]string           `json:"weekDates,omitempty"`
-	Schedule  map[string][]WeeklyPlanItem `json:"schedule"`
-	Error     string                      `json:"error,omitempty"`
+	Success      bool                        `json:"success"`
+	Title        string                      `json:"title"`
+	FilePath     string                      `json:"filePath"`
+	StartDate    string                      `json:"startDate,omitempty"`
+	EndDate      string                      `json:"endDate,omitempty"`
+	WeekRange    string                      `json:"weekRange,omitempty"`
+	WeekDates    map[string]string           `json:"weekDates,omitempty"`
+	Schedule     map[string][]WeeklyPlanItem `json:"schedule"`
+	IsCustomized bool                        `json:"isCustomized,omitempty"`
+	Error        string                      `json:"error,omitempty"`
 }
 
 type WeeklyPlanSummary struct {
-	FilePath  string `json:"filePath"`
-	Title     string `json:"title"`
-	StartDate string `json:"startDate"`
-	EndDate   string `json:"endDate"`
-	WeekRange string `json:"weekRange"`
-	IsCurrent bool   `json:"isCurrent"`
+	FilePath     string `json:"filePath"`
+	Title        string `json:"title"`
+	StartDate    string `json:"startDate"`
+	EndDate      string `json:"endDate"`
+	WeekRange    string `json:"weekRange"`
+	IsCurrent    bool   `json:"isCurrent"`
+	IsCustomized bool   `json:"isCustomized,omitempty"`
 }
 
 var (
@@ -1241,8 +1254,21 @@ func (a *App) SelectWeeklyPlanFileDialog() (*WeeklyPlanResult, error) {
 	return a.ParseWeeklyPlanFile(filename)
 }
 
-// ParseWeeklyPlanFile executes the Python script to parse a HWP or HWPX file
+// ParseWeeklyPlanFile executes the Python script to parse a HWP or HWPX file, or returns cached customized plan from SQLite
 func (a *App) ParseWeeklyPlanFile(filePath string) (*WeeklyPlanResult, error) {
+	return a.parseWeeklyPlanFileInternal(filePath, false)
+}
+
+func (a *App) parseWeeklyPlanFileInternal(filePath string, forceReanalyze bool) (*WeeklyPlanResult, error) {
+	// If not forcing reanalysis, check if SQLite already has this plan (preserves customized timetables)
+	if !forceReanalyze && a.planDB != nil {
+		if cached, exists, errDb := a.planDB.GetPlan(filePath); errDb == nil && exists && cached != nil {
+			a.currentPlan = cached
+			a.saveCurrentPlan()
+			return cached, nil
+		}
+	}
+
 	// Always write the latest embedded script to TempDir so that any stale or unpatched
 	// script sitting in CWD / Program Files is never mistakenly executed.
 	tempScript := filepath.Join(os.TempDir(), "classbook_parse_weekly_plan.py")
@@ -1301,6 +1327,11 @@ func (a *App) ParseWeeklyPlanFile(filePath string) (*WeeklyPlanResult, error) {
 	}
 
 	result.FilePath = filePath
+
+	// Save to SQLite database (original HWPX file is never modified)
+	if a.planDB != nil {
+		_ = a.planDB.SavePlan(&result, false)
+	}
 
 	// Save to memory and cache file
 	a.currentPlan = &result
@@ -1361,13 +1392,21 @@ func (a *App) GetWeeklyPlanList() ([]WeeklyPlanSummary, error) {
 				isCurrent = (todayStr >= startDate && todayStr <= endDate)
 			}
 
+			isCustomized := false
+			if a.planDB != nil {
+				if cp, exists, _ := a.planDB.GetPlan(fullPath); exists && cp != nil {
+					isCustomized = cp.IsCustomized
+				}
+			}
+
 			list = append(list, WeeklyPlanSummary{
-				FilePath:  fullPath,
-				Title:     title,
-				StartDate: startDate,
-				EndDate:   endDate,
-				WeekRange: weekRange,
-				IsCurrent: isCurrent,
+				FilePath:     fullPath,
+				Title:        title,
+				StartDate:    startDate,
+				EndDate:      endDate,
+				WeekRange:    weekRange,
+				IsCurrent:    isCurrent,
+				IsCustomized: isCustomized,
 			})
 		}
 		// If we found files in the primary watch folder, prefer it
@@ -1445,10 +1484,36 @@ func (a *App) GetWeeklyPlanByPath(filePath string) (*WeeklyPlanResult, error) {
 
 // ReanalyzeWeeklyPlan forces re-parsing the current weekly plan file or date-based plan
 func (a *App) ReanalyzeWeeklyPlan() (*WeeklyPlanResult, error) {
+	var targetFile string
 	if a.currentPlan != nil && a.currentPlan.FilePath != "" {
 		if _, err := os.Stat(a.currentPlan.FilePath); err == nil {
-			return a.GetWeeklyPlanByPath(a.currentPlan.FilePath)
+			targetFile = a.currentPlan.FilePath
 		}
+	}
+	if targetFile == "" {
+		if plans, err := a.GetWeeklyPlanList(); err == nil && len(plans) > 0 {
+			for _, p := range plans {
+				if p.IsCurrent {
+					targetFile = p.FilePath
+					break
+				}
+			}
+			if targetFile == "" {
+				targetFile = plans[0].FilePath
+			}
+		}
+	}
+	if targetFile != "" {
+		res, err := a.parseWeeklyPlanFileInternal(targetFile, true)
+		if err == nil && res != nil {
+			a.settings.LastPlanFile = targetFile
+			if info, errStat := os.Stat(targetFile); errStat == nil {
+				a.settings.LastPlanModTime = info.ModTime()
+			}
+			a.saveSettings()
+			runtime.EventsEmit(a.ctx, "weekly-plan-updated", res)
+		}
+		return res, err
 	}
 	return a.GetLatestWeeklyPlan()
 }
@@ -1606,15 +1671,48 @@ func (a *App) saveCurrentPlan() {
 	}
 }
 
-// SaveWeeklyPlan persists the weekly plan to disk (latest_weekly_plan.json) and updates memory
+// SaveWeeklyPlan persists the weekly plan to SQLite and disk cache, then updates memory
 func (a *App) SaveWeeklyPlan(plan *WeeklyPlanResult) error {
 	if plan == nil {
 		return fmt.Errorf("plan is nil")
+	}
+	plan.IsCustomized = true
+	if a.planDB != nil {
+		_ = a.planDB.SavePlan(plan, true)
 	}
 	a.currentPlan = plan
 	a.saveCurrentPlan()
 	runtime.EventsEmit(a.ctx, "weekly-plan-updated", plan)
 	return nil
+}
+
+// SwapWeeklyPlanSlots exchanges two timetable slots in the active weekly plan and auto-saves to SQLite
+func (a *App) SwapWeeklyPlanSlots(dayA string, periodA int, dayB string, periodB int) (*WeeklyPlanResult, error) {
+	if a.currentPlan == nil {
+		p, err := a.GetLatestWeeklyPlan()
+		if err != nil || p == nil {
+			return nil, fmt.Errorf("활성화된 주학습계획안이 없습니다")
+		}
+		a.currentPlan = p
+	}
+
+	if a.planDB == nil {
+		var errDb error
+		a.planDB, errDb = initWeeklyPlanDB()
+		if errDb != nil {
+			return nil, fmt.Errorf("SQLite DB 초기화 실패: %w", errDb)
+		}
+	}
+
+	updatedPlan, err := a.planDB.SwapSlots(a.currentPlan, dayA, periodA, dayB, periodB)
+	if err != nil {
+		return nil, err
+	}
+
+	a.currentPlan = updatedPlan
+	a.saveCurrentPlan()
+	runtime.EventsEmit(a.ctx, "weekly-plan-updated", updatedPlan)
+	return updatedPlan, nil
 }
 
 func (a *App) loadLatestPlan() (*WeeklyPlanResult, error) {

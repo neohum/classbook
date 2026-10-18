@@ -3,7 +3,7 @@ import {
     X, Calendar, FolderOpen, Upload, BookOpen, Clock, ArrowRight, 
     CheckCircle2, FileText, RotateCw, Plus, 
     Trash2, Edit2, Square, Save, Check, LayoutGrid, List,
-    ChevronLeft, ChevronRight, Sparkles, Play
+    ChevronLeft, ChevronRight, Sparkles, Play, GripVertical, ArrowUpDown
 } from 'lucide-react';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { main } from '../../wailsjs/go/models';
@@ -12,6 +12,7 @@ import {
     SelectWeeklyPlanFileDialog, 
     ReanalyzeWeeklyPlan,
     SaveWeeklyPlan,
+    SwapWeeklyPlanSlots,
     GetTextbooks,
     GetWeeklyPlanList,
     GetWeeklyPlanByPath
@@ -116,6 +117,39 @@ function WeeklyPlanScheduleModalContent({
     const [availableBooks, setAvailableBooks] = useState<main.Textbook[]>([]);
     const [storedSchedules, setStoredSchedules] = useState<ScheduleItem[]>(() => getStoredSchedule());
     const [planList, setPlanList] = useState<main.WeeklyPlanSummary[]>([]);
+    const [dragSource, setDragSource] = useState<{ day: string; period: number; subject?: string } | null>(null);
+    const [dragOverTarget, setDragOverTarget] = useState<{ day: string; period: number } | null>(null);
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+    const showToast = (msg: string) => {
+        setToastMessage(msg);
+        setTimeout(() => setToastMessage(null), 3500);
+    };
+
+    const handleSwapSlots = async (srcDay: string, srcPeriod: number, dstDay: string, dstPeriod: number) => {
+        if (srcDay === dstDay && srcPeriod === dstPeriod) return;
+        try {
+            setIsLoading(true);
+            const updated = await SwapWeeklyPlanSlots(srcDay, srcPeriod, dstDay, dstPeriod);
+            if (updated && updated.success) {
+                onPlanUpdated(updated);
+                try {
+                    localStorage.setItem('classbook_weekly_plan_db', JSON.stringify(updated));
+                } catch (e) {}
+
+                const srcPeriodLabel = srcPeriod === 0 ? '아침활동' : `${srcPeriod}교시`;
+                const dstPeriodLabel = dstPeriod === 0 ? '아침활동' : `${dstPeriod}교시`;
+                showToast(`[${srcDay}요일 ${srcPeriodLabel}] ↔ [${dstDay}요일 ${dstPeriodLabel}] 수업 위치가 변경되었습니다 (SQLite 자동 저장됨)`);
+            }
+        } catch (err: any) {
+            console.error("Failed to swap slots:", err);
+            alert(`시간표 변경 오류: ${err.message || err}`);
+        } finally {
+            setIsLoading(false);
+            setDragSource(null);
+            setDragOverTarget(null);
+        }
+    };
 
     const fetchPlanList = async () => {
         try {
@@ -955,6 +989,24 @@ function WeeklyPlanScheduleModalContent({
                         </div>
                     </div>
 
+                    {/* SQLite & Drag-Drop Guide Banner */}
+                    <div className="bg-gradient-to-r from-violet-50 to-indigo-50/70 px-6 py-2 border-b border-violet-100 flex items-center justify-between text-xs gap-3 flex-wrap">
+                        <div className="flex items-center gap-2">
+                            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-200 text-violet-800 text-[11px] font-black shrink-0">
+                                💡
+                            </span>
+                            <span className="text-slate-700 font-medium">
+                                <strong className="text-violet-900 font-bold">시간표 드래그 앤 드롭:</strong> 교시 카드를 드래그하여 다른 교시나 요일로 놓으면 수업이 서로 자리를 바꿉니다. (원본 HWPX 파일은 수정되지 않으며, 변경 사항은 SQLite에 안전하게 자동 저장됩니다.)
+                            </span>
+                        </div>
+                        {effectivePlan?.isCustomized && (
+                            <div className="flex items-center gap-1.5 shrink-0 bg-violet-100 text-violet-800 px-2.5 py-0.5 rounded-full font-bold text-[11px] border border-violet-200 shadow-2xs">
+                                <Sparkles className="w-3 h-3 text-violet-600" />
+                                <span>사용자 변경 시간표 적용 중</span>
+                            </div>
+                        )}
+                    </div>
+
                     {/* View Mode 1: Daily Tab View Header */}
                     {viewMode === 'daily' && (
                         <div className="px-6 pt-3 pb-2 border-b border-slate-100 flex items-center justify-between gap-2">
@@ -1315,16 +1367,54 @@ function WeeklyPlanScheduleModalContent({
                                                     {DAY_LABELS.map(day => {
                                                         const items = getSanitizedDayItems(day);
                                                         const item = items.find(it => (it.period !== undefined ? it.period : 1) === period);
+                                                        const isDragged = dragSource?.day === day && dragSource?.period === period;
+                                                        const isDropTarget = dragOverTarget?.day === day && dragOverTarget?.period === period;
 
                                                         if (!item) {
                                                             return (
-                                                                <td key={day} className="p-2 border-r last:border-r-0 border-slate-200/80 align-top group">
+                                                                <td 
+                                                                    key={day} 
+                                                                    className="p-2 border-r last:border-r-0 border-slate-200/80 align-top group"
+                                                                    onDragOver={(e) => {
+                                                                        if (dragSource) {
+                                                                            e.preventDefault();
+                                                                            e.dataTransfer.dropEffect = 'move';
+                                                                        }
+                                                                    }}
+                                                                    onDragEnter={(e) => {
+                                                                        if (dragSource) {
+                                                                            e.preventDefault();
+                                                                            setDragOverTarget({ day, period });
+                                                                        }
+                                                                    }}
+                                                                    onDragLeave={() => {
+                                                                        if (dragOverTarget?.day === day && dragOverTarget?.period === period) {
+                                                                            setDragOverTarget(null);
+                                                                        }
+                                                                    }}
+                                                                    onDrop={(e) => {
+                                                                        e.preventDefault();
+                                                                        if (dragSource) {
+                                                                            handleSwapSlots(dragSource.day, dragSource.period, day, period);
+                                                                        }
+                                                                    }}
+                                                                >
                                                                     <div 
                                                                         onClick={() => handleStartAdd(day, period)}
-                                                                        className="h-20 rounded-xl border border-dashed border-slate-200 hover:border-violet-300 hover:bg-violet-50/30 flex items-center justify-center text-slate-300 hover:text-violet-600 cursor-pointer transition-all"
-                                                                        title={`${day}요일 ${period}교시 추가하기`}
+                                                                        className={`h-20 rounded-xl border border-dashed flex items-center justify-center transition-all cursor-pointer ${
+                                                                            isDropTarget
+                                                                                ? 'border-violet-500 bg-violet-100/70 text-violet-700 font-bold scale-[1.02] shadow-md ring-2 ring-violet-400'
+                                                                                : 'border-slate-200 hover:border-violet-300 hover:bg-violet-50/30 text-slate-300 hover:text-violet-600'
+                                                                        }`}
+                                                                        title={`${day}요일 ${period === 0 ? '아침활동' : period + '교시'} 추가하기 또는 드래그하여 이 자리로 이동`}
                                                                     >
-                                                                        <Plus className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-transform" />
+                                                                        {isDropTarget ? (
+                                                                            <span className="text-xs font-bold text-violet-700 animate-pulse">
+                                                                                이 자리로 이동
+                                                                            </span>
+                                                                        ) : (
+                                                                            <Plus className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-transform" />
+                                                                        )}
                                                                     </div>
                                                                 </td>
                                                             );
@@ -1333,14 +1423,62 @@ function WeeklyPlanScheduleModalContent({
                                                         const isBlank = item.matchedBookId === 'blank' || (!item.matchedBookId && !item.startPage && !item.pageStr);
 
                                                         return (
-                                                            <td key={day} className="p-2 border-r last:border-r-0 border-slate-200/80 align-top">
-                                                                <div className="h-full min-h-[92px] p-2.5 rounded-xl bg-slate-50/80 hover:bg-violet-50/60 border border-slate-200/80 hover:border-violet-300 transition-all flex flex-col justify-between group shadow-2xs hover:shadow-xs">
+                                                            <td 
+                                                                key={day} 
+                                                                className="p-2 border-r last:border-r-0 border-slate-200/80 align-top"
+                                                                onDragOver={(e) => {
+                                                                    if (dragSource) {
+                                                                        e.preventDefault();
+                                                                        e.dataTransfer.dropEffect = 'move';
+                                                                    }
+                                                                }}
+                                                                onDragEnter={(e) => {
+                                                                    if (dragSource) {
+                                                                        e.preventDefault();
+                                                                        setDragOverTarget({ day, period });
+                                                                    }
+                                                                }}
+                                                                onDragLeave={() => {
+                                                                    if (dragOverTarget?.day === day && dragOverTarget?.period === period) {
+                                                                        setDragOverTarget(null);
+                                                                    }
+                                                                }}
+                                                                onDrop={(e) => {
+                                                                    e.preventDefault();
+                                                                    if (dragSource) {
+                                                                        handleSwapSlots(dragSource.day, dragSource.period, day, period);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <div 
+                                                                    draggable={true}
+                                                                    onDragStart={(e) => {
+                                                                        e.dataTransfer.setData('text/plain', JSON.stringify({ day, period }));
+                                                                        e.dataTransfer.effectAllowed = 'move';
+                                                                        setDragSource({ day, period, subject: item.subject });
+                                                                    }}
+                                                                    onDragEnd={() => {
+                                                                        setDragSource(null);
+                                                                        setDragOverTarget(null);
+                                                                    }}
+                                                                    className={`h-full min-h-[92px] p-2.5 rounded-xl border transition-all flex flex-col justify-between group shadow-2xs select-none cursor-grab active:cursor-grabbing ${
+                                                                        isDragged
+                                                                            ? 'opacity-40 border-violet-400 bg-violet-100/50 scale-95 shadow-inner'
+                                                                            : isDropTarget
+                                                                                ? 'ring-2 ring-violet-500 border-violet-500 bg-violet-100/80 scale-[1.02] shadow-md'
+                                                                                : 'bg-slate-50/80 hover:bg-violet-50/60 border-slate-200/80 hover:border-violet-300 hover:shadow-xs'
+                                                                    }`}
+                                                                    title="드래그하여 다른 교시와 자리를 맞바꿀 수 있습니다"
+                                                                >
                                                                     <div>
                                                                         {/* Top badges */}
                                                                         <div className="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
-                                                                            <span className="font-extrabold text-xs text-slate-900 group-hover:text-violet-900 transition-colors">
-                                                                                {item.subject}
-                                                                            </span>
+                                                                            <div className="flex items-center gap-1 min-w-0">
+                                                                                <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-violet-500 shrink-0 cursor-grab transition-colors" title="드래그하여 다른 교시와 자리 교환" />
+                                                                                <span className="font-extrabold text-xs text-slate-900 group-hover:text-violet-900 transition-colors truncate">
+                                                                                    {item.subject}
+                                                                                </span>
+                                                                            </div>
                                                                             {isBlank ? (
                                                                                 <span className="text-[10px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded">
                                                                                     빈화면
@@ -1418,13 +1556,63 @@ function WeeklyPlanScheduleModalContent({
                                 ) : (
                                     currentDayItems.map((item, idx) => {
                                         const isBlank = item.matchedBookId === 'blank' || (!item.matchedBookId && !item.startPage && !item.pageStr);
+                                        const period = item.period !== undefined ? item.period : (idx + 1);
+                                        const isDragged = dragSource?.day === selectedDay && dragSource?.period === period;
+                                        const isDropTarget = dragOverTarget?.day === selectedDay && dragOverTarget?.period === period && !isDragged;
 
                                         return (
                                             <div
                                                 key={idx}
-                                                className="p-4 bg-white hover:bg-violet-50/50 border border-slate-200 hover:border-violet-300 rounded-2xl transition-all flex items-center justify-between gap-4 group shadow-xs hover:shadow-sm"
+                                                draggable={true}
+                                                onDragStart={(e) => {
+                                                    e.dataTransfer.setData('text/plain', JSON.stringify({ day: selectedDay, period }));
+                                                    e.dataTransfer.effectAllowed = 'move';
+                                                    setDragSource({ day: selectedDay, period, subject: item.subject });
+                                                }}
+                                                onDragEnd={() => {
+                                                    setDragSource(null);
+                                                    setDragOverTarget(null);
+                                                }}
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    e.dataTransfer.dropEffect = 'move';
+                                                }}
+                                                onDragEnter={(e) => {
+                                                    e.preventDefault();
+                                                    setDragOverTarget({ day: selectedDay, period });
+                                                }}
+                                                onDragLeave={(e) => {
+                                                    if (dragOverTarget?.day === selectedDay && dragOverTarget?.period === period) {
+                                                        setDragOverTarget(null);
+                                                    }
+                                                }}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    try {
+                                                        const dataStr = e.dataTransfer.getData('text/plain');
+                                                        if (dataStr) {
+                                                            const data = JSON.parse(dataStr);
+                                                            if (data.day && data.period !== undefined) {
+                                                                handleSwapSlots(data.day, data.period, selectedDay, period);
+                                                            }
+                                                        }
+                                                    } catch (err) {
+                                                        console.error("Drop parse error in daily view", err);
+                                                    }
+                                                    setDragSource(null);
+                                                    setDragOverTarget(null);
+                                                }}
+                                                className={`p-4 rounded-2xl transition-all flex items-center justify-between gap-4 group shadow-xs cursor-grab active:cursor-grabbing border ${
+                                                    isDragged
+                                                        ? 'opacity-40 border-violet-400 bg-violet-100/50 scale-[0.99] shadow-inner'
+                                                        : isDropTarget
+                                                            ? 'ring-2 ring-violet-500 border-violet-500 bg-violet-100/80 scale-[1.01] shadow-md'
+                                                            : 'bg-white hover:bg-violet-50/50 border-slate-200 hover:border-violet-300 hover:shadow-sm'
+                                                }`}
+                                                title="드래그하여 다른 교시와 자리를 맞바꿀 수 있습니다"
                                             >
                                                 <div className="flex items-center gap-3.5 min-w-0">
+                                                    <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-violet-500 shrink-0 cursor-grab" title="드래그하여 다른 교시와 자리 교환" />
                                                     {/* 교시 뱃지 */}
                                                     <div className={`w-11 h-11 rounded-xl shadow-xs border flex flex-col items-center justify-center shrink-0 transition-colors ${
                                                         item.period === 0
@@ -1522,7 +1710,7 @@ function WeeklyPlanScheduleModalContent({
                     <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 flex-wrap gap-2">
                         <div className="flex items-center gap-1.5">
                             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                            <span>입력 및 수정한 모든 계획안 내용은 기본 DB에 안전하게 자동 저장·유지됩니다.</span>
+                            <span>시간표 교환 및 변경사항은 SQLite 데이터베이스에 안전하게 자동 저장되며, 원본 HWPX 파일은 절대 변경되지 않습니다.</span>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -1543,6 +1731,14 @@ function WeeklyPlanScheduleModalContent({
                     </div>
                 </div>
             </div>
+
+            {/* Floating Toast Notification */}
+            {toastMessage && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[10005] bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold border border-slate-700/60 backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-200">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{toastMessage}</span>
+                </div>
+            )}
 
             {/* Quick Blank Screen Dialog */}
             {showQuickBlank && (
