@@ -1,11 +1,11 @@
 {
-  "version": "1.2.26",
-  "releaseDate": "2026-10-08",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.26/classbook-setup-v1.2.26.exe",
-  "installerName": "classbook-setup-v1.2.26.exe",
-  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.26.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261008%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261008T033520Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a976d251149c26b51beb403e243d68e50d8e27b56148957bc10932983fc9a632",
-  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.26.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261008%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261008T033519Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=37ee08b9639fd0bf2a786ad88f471e164a237fb81add1ec185288e9876d25713",
-  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.26.exe",
-  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.26.exe",
-  "notes": "양쪽 메뉴바(좌/우)에 반대편 페이지 넘김 버튼 추가 (좌측 메뉴: 이전/다음 쪽, 우측 메뉴: 다음/이전 쪽 모두 지원) (v1.2.26)"
+  "version": "1.2.27",
+  "releaseDate": "2026-10-19",
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.27/classbook-setup-v1.2.27.exe",
+  "installerName": "classbook-setup-v1.2.27.exe",
+  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.27.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261018%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261018T233618Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d7598675994d2a7859441655eb71db9dd66b4c9c90c4e75dd28f0dcaa0a31f44",
+  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.27.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261018%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261018T233617Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=09995affc92f9007f7b413f09ac9046ad65503c87817ee82ca7c91891ca6b6fc",
+  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.27.exe",
+  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.27.exe",
+  "notes": "원본 HWPX 보존, 주학습계획안 SQLite 저장 및 드래그 앤 드롭 시간표 변경 자동저장 (v1.2.27)"
 }

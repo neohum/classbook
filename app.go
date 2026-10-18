@@ -34,7 +34,7 @@ var embeddedWeeklyPlanScript []byte
 //go:embed convert_pdf.py
 var embeddedConvertPdfScript []byte
 
-const AppVersion = "1.2.26"
+const AppVersion = "1.2.27"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const R2VersionUrl = "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/version.json"
@@ -240,10 +240,17 @@ func (a *App) CheckForUpdate() *UpdateStatus {
 			vStr := strings.TrimPrefix(vInfo.Version, "v")
 			vVer, errV := version.NewVersion(vStr)
 			if errV == nil && errCurr == nil && vVer.GreaterThan(currentVer) {
+				dlUrl := vInfo.R2PresignedUrl
+				if dlUrl == "" {
+					dlUrl = vInfo.R2PresignedUrlEdulinker
+				}
+				if dlUrl == "" {
+					dlUrl = vInfo.DownloadUrl
+				}
 				return &UpdateStatus{
 					HasUpdate:   true,
 					LatestVer:   vInfo.Version,
-					DownloadUrl: vInfo.DownloadUrl,
+					DownloadUrl: dlUrl,
 				}
 			}
 		}
