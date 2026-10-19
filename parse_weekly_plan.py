@@ -200,6 +200,48 @@ def match_book_id(subject, available_books, unit=""):
                 
     return ""
 
+def resolve_integrated_subject(subject, matched_book_id="", raw_text="", topic="", available_books=None):
+    """
+    For Korean elementary 1-2 grade integrated subjects (바른생활, 슬기로운생활, 즐거운생활),
+    substitute the subject with the actual textbook file/book name (e.g. '학교1-1', '사람들1-1', '탐험1-1', '하루')
+    instead of the generic subject name.
+    """
+    if not subject:
+        return matched_book_id or subject
+    
+    is_integrated = any(k in subject for k in ['바른생활', '슬기로운생활', '즐거운생활', '바생', '슬생', '즐생', '통합'])
+    if not is_integrated:
+        return subject
+
+    # 1. If matched_book_id exists and not integrated generic name
+    if matched_book_id and matched_book_id != 'blank':
+        clean_bid = re.sub(r'\.pdf$', '', matched_book_id, flags=re.IGNORECASE).strip()
+        if not any(k in clean_bid for k in ['바른생활', '슬기로운생활', '즐거운생활', '바생', '슬생', '즐생', '통합']):
+            return clean_bid
+
+    # 2. Check available books for matching integrated themes
+    themes = ['학교', '사람들', '탐험', '하루', '봄', '여름', '가을', '겨울', '세상', '마을', '이웃', '우리나라', '세계']
+    combined = f"{raw_text} {topic}"
+    if available_books:
+        for theme in themes:
+            if theme in combined:
+                for b in available_books:
+                    bid = b.get('id', '')
+                    if theme in bid:
+                        return re.sub(r'\.pdf$', '', bid, flags=re.IGNORECASE).strip()
+                return theme
+
+    # 3. If theme exists in text
+    for theme in themes:
+        if theme in combined:
+            return theme
+
+    # 4. Fallback to clean matched_book_id if available
+    if matched_book_id and matched_book_id != 'blank':
+        return re.sub(r'\.pdf$', '', matched_book_id, flags=re.IGNORECASE).strip()
+
+    return subject
+
 def get_available_books(cwd=None):
     candidates = []
     if cwd:
@@ -1036,11 +1078,19 @@ def parse_hwpml(filepath):
         "schedule": schedule
     }
 
-def merge_period_items(items):
+def merge_period_items(items, available_books=None):
     if not items:
         return None
     if len(items) == 1:
-        return items[0]
+        single = dict(items[0])
+        single['subject'] = resolve_integrated_subject(
+            single.get('subject', ''),
+            single.get('matchedBookId', ''),
+            single.get('raw', ''),
+            single.get('topic', ''),
+            available_books
+        )
+        return single
 
     period = items[0].get('period', 1)
 
@@ -1115,9 +1165,17 @@ def merge_period_items(items):
         if r and r not in raw_parts:
             raw_parts.append(r)
 
+    final_subject = resolve_integrated_subject(
+        subject,
+        matchedBookId,
+        ' '.join(raw_parts),
+        topic,
+        available_books
+    )
+
     return {
         'period': period,
-        'subject': subject,
+        'subject': final_subject,
         'matchedBookId': matchedBookId,
         'topic': topic,
         'pageStr': pageStr,
@@ -1216,9 +1274,10 @@ def sanitize_result(res, filepath=""):
                 grouped[p] = []
             grouped[p].append(itm)
 
+        available_books = get_available_books()
         merged_day = []
         for p in sorted(grouped.keys()):
-            m_item = merge_period_items(grouped[p])
+            m_item = merge_period_items(grouped[p], available_books)
             if m_item:
                 merged_day.append(m_item)
         new_sched[day] = merged_day

@@ -3,7 +3,8 @@ import {
     X, Calendar, FolderOpen, Upload, BookOpen, Clock, ArrowRight, 
     CheckCircle2, FileText, RotateCw, Plus, 
     Trash2, Edit2, Square, Save, Check, LayoutGrid, List,
-    ChevronLeft, ChevronRight, Sparkles, Play, GripVertical, ArrowUpDown
+    ChevronLeft, ChevronRight, Sparkles, Play, GripVertical, ArrowUpDown,
+    Maximize2, Minimize2
 } from 'lucide-react';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { main } from '../../wailsjs/go/models';
@@ -19,9 +20,10 @@ import {
 } from '../../wailsjs/go/main/App';
 import HwpHtmlViewerModal from './HwpHtmlViewerModal';
 import ErrorBoundary from './ErrorBoundary';
-import { resolveBookForSubject } from '../utils/bookResolver';
+import { resolveBookForSubject, getDisplaySubjectName } from '../utils/bookResolver';
 import { getStoredSchedule, isLunchSchedule, isBreakSchedule, parsePeriodFromName, type ScheduleItem } from './ScheduleConfigModal';
 import { getCurrentClassStatus } from '../utils/scheduleHelper';
+import { getStoredMorningActivity, saveStoredMorningActivity } from '../utils/morningActivityHelper';
 
 interface Props {
     isOpen: boolean;
@@ -114,6 +116,7 @@ function WeeklyPlanScheduleModalContent({
     const [isLoading, setIsLoading] = useState(false);
     const [isReanalyzing, setIsReanalyzing] = useState(false);
     const [isHwpHtmlViewerOpen, setIsHwpHtmlViewerOpen] = useState(false);
+    const [isMaximized, setIsMaximized] = useState(false);
     const [availableBooks, setAvailableBooks] = useState<main.Textbook[]>([]);
     const [storedSchedules, setStoredSchedules] = useState<ScheduleItem[]>(() => getStoredSchedule());
     const [planList, setPlanList] = useState<main.WeeklyPlanSummary[]>([]);
@@ -491,17 +494,18 @@ function WeeklyPlanScheduleModalContent({
         const mergedList: main.WeeklyPlanItem[] = [];
 
         // Always ensure morning activity (period 0) is present for all weekdays
+        const morningConfig = getStoredMorningActivity();
         if (!grouped.has(0)) {
-            const defaultTopic = DEFAULT_MORNING_TOPICS[day] || '아침 자율 독서 및 활동';
+            const defaultTopic = morningConfig.topic || DEFAULT_MORNING_TOPICS[day] || '아침 자율 독서 및 활동';
             mergedList.push({
                 period: 0,
-                subject: '아침활동',
+                subject: morningConfig.subject || '아침활동',
                 matchedBookId: 'blank',
                 startPage: 0,
                 endPage: 0,
                 pageStr: '',
                 topic: defaultTopic,
-                raw: `아침활동 ${defaultTopic}`
+                raw: `${morningConfig.subject || '아침활동'} ${defaultTopic}`
             });
         }
 
@@ -510,6 +514,9 @@ function WeeklyPlanScheduleModalContent({
         for (const p of sortedPeriods) {
             const list = grouped.get(p)!;
             if (list.length === 1) {
+                if (p === 0 && (!list[0].topic || !list[0].topic.trim())) {
+                    list[0] = { ...list[0], topic: morningConfig.topic, subject: morningConfig.subject || '아침활동' };
+                }
                 mergedList.push(list[0]);
                 continue;
             }
@@ -592,7 +599,10 @@ function WeeklyPlanScheduleModalContent({
     // Open item editor for adding
     const handleStartAdd = (targetDay: string = selectedDay, targetPeriod?: number) => {
         if (targetPeriod === -1 || targetPeriod === -2) return;
-        const isMorning = targetPeriod === 0;
+        if (targetPeriod === 0) {
+            handleOpenMorningActivityBulk();
+            return;
+        }
         const dayItems = getSanitizedDayItems(targetDay);
         const nextPeriod = targetPeriod !== undefined ? targetPeriod : (dayItems.length > 0 
             ? Math.max(...dayItems.map(i => i.period !== undefined ? i.period : 0)) + 1 
@@ -601,48 +611,50 @@ function WeeklyPlanScheduleModalContent({
             isNew: true,
             day: targetDay,
             period: nextPeriod,
-            subject: isMorning ? '아침활동' : '창체',
-            matchedBookId: isMorning ? 'blank' : (availableBooks.length > 0 ? availableBooks[0].id : ''),
-            startPage: isMorning ? 0 : 1,
+            subject: '창체',
+            matchedBookId: availableBooks.length > 0 ? availableBooks[0].id : '',
+            startPage: 1,
             pageStr: '',
-            topic: isMorning ? DEFAULT_MORNING_TOPIC : '',
-            isBlankScreen: isMorning,
-            applyToAllDays: isMorning
+            topic: '',
+            isBlankScreen: false,
+            applyToAllDays: false
         });
     };
 
     // Open item editor for editing
     const handleStartEdit = (targetDay: string, idx: number, itm: main.WeeklyPlanItem) => {
-        const isMorning = itm.period === 0;
-        const isBlank = isMorning || itm.matchedBookId === 'blank' || (!itm.matchedBookId && !itm.startPage && !itm.pageStr);
+        if (itm.period === 0) {
+            handleOpenMorningActivityBulk();
+            return;
+        }
+        const isBlank = itm.matchedBookId === 'blank' || (!itm.matchedBookId && !itm.startPage && !itm.pageStr);
         setEditingItem({
             isNew: false,
             day: targetDay,
             index: idx,
             period: itm.period !== undefined ? itm.period : (idx + 1),
-            subject: itm.subject || (isMorning ? '아침활동' : (isBlank ? '활동' : '국어')),
+            subject: itm.subject || (isBlank ? '활동' : '국어'),
             matchedBookId: itm.matchedBookId || (isBlank ? 'blank' : (availableBooks.length > 0 ? availableBooks[0].id : '')),
             startPage: isBlank ? 0 : (itm.startPage || 1),
             pageStr: itm.pageStr || (itm.startPage ? `${itm.startPage}쪽` : ''),
-            topic: itm.topic || (isMorning ? DEFAULT_MORNING_TOPIC : ''),
+            topic: itm.topic || '',
             isBlankScreen: isBlank,
-            applyToAllDays: isMorning
+            applyToAllDays: false
         });
     };
 
-    // Quick bulk setup for morning activities across all weekdays
+    // Quick bulk setup for morning activities across all weekdays (Single source of truth)
     const handleOpenMorningActivityBulk = () => {
-        const sched = effectivePlan?.schedule || {};
-        const monItem = (sched['월'] || []).find(it => it.period === 0);
+        const stored = getStoredMorningActivity();
         setEditingItem({
-            isNew: !monItem,
+            isNew: false,
             day: '월',
             period: 0,
-            subject: '아침활동',
+            subject: stored.subject || '아침활동',
             matchedBookId: 'blank',
             startPage: 0,
             pageStr: '',
-            topic: monItem?.topic || DEFAULT_MORNING_TOPIC,
+            topic: stored.topic || DEFAULT_MORNING_TOPIC,
             isBlankScreen: true,
             applyToAllDays: true
         });
@@ -679,7 +691,13 @@ function WeeklyPlanScheduleModalContent({
 
         const updatedSchedule = { ...(targetPlan.schedule || {}) };
         const isMorning = Number(editingItem.period) === 0;
-        const applyToAll = isMorning && Boolean(editingItem.applyToAllDays);
+
+        if (isMorning) {
+            saveStoredMorningActivity(
+                editingItem.topic.trim() || DEFAULT_MORNING_TOPIC,
+                editingItem.subject.trim() || '아침활동'
+            );
+        }
 
         const newItem: main.WeeklyPlanItem = {
             period: Number(editingItem.period),
@@ -688,11 +706,11 @@ function WeeklyPlanScheduleModalContent({
             startPage: editingItem.isBlankScreen ? 0 : Number(editingItem.startPage || 1),
             endPage: editingItem.isBlankScreen ? 0 : Number(editingItem.startPage || 1),
             pageStr: editingItem.isBlankScreen ? "" : (editingItem.pageStr ? editingItem.pageStr : `${editingItem.startPage || 1}쪽`),
-            topic: editingItem.topic.trim(),
+            topic: editingItem.topic.trim() || (isMorning ? (getStoredMorningActivity().topic || DEFAULT_MORNING_TOPIC) : ''),
             raw: `${editingItem.subject} ${editingItem.topic}`
         };
 
-        const targetDays = applyToAll ? DAY_LABELS : [editingItem.day];
+        const targetDays = isMorning ? DAY_LABELS : (editingItem.applyToAllDays ? DAY_LABELS : [editingItem.day]);
         for (const d of targetDays) {
             const dayList = (updatedSchedule[d] || []).filter(
                 it => (it.period !== undefined ? it.period : 1) !== Number(editingItem.period)
@@ -781,8 +799,10 @@ function WeeklyPlanScheduleModalContent({
 
     return (
         <>
-            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in">
-                <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-5xl w-full overflow-hidden flex flex-col max-h-[94vh]">
+            <div className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm ${isMaximized ? 'p-0' : 'p-3 sm:p-5'} animate-in fade-in`}>
+                <div className={`bg-white shadow-2xl border border-slate-200 w-full overflow-hidden flex flex-col transition-all ${
+                    isMaximized ? 'w-screen h-screen rounded-none max-h-screen' : 'max-w-5xl rounded-3xl max-h-[94vh]'
+                }`}>
                     {/* Header */}
                     <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 gap-4 flex-wrap">
                         <div className="flex items-center gap-3">
@@ -870,6 +890,15 @@ function WeeklyPlanScheduleModalContent({
                             >
                                 <FileText className="w-4 h-4" />
                                 <span>원본 문서 미리보기</span>
+                            </button>
+
+                            {/* 창 확대/복원 버튼 */}
+                            <button
+                                onClick={() => setIsMaximized(!isMaximized)}
+                                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+                                title={isMaximized ? "창 크기 복원" : "창 확대"}
+                            >
+                                {isMaximized ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
                             </button>
 
                             <button
@@ -1103,13 +1132,18 @@ function WeeklyPlanScheduleModalContent({
                                         <select
                                             value={editingItem.period}
                                             onChange={(e) => setEditingItem({ ...editingItem, period: parseInt(e.target.value, 10) })}
-                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                            disabled={editingItem.period === 0}
+                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:bg-slate-100 disabled:text-slate-500"
                                         >
-                                            {schedulePeriods
-                                                .filter(p => !p.isLunch && !p.isBreak && p.period >= 0)
-                                                .map(({ period: p, name, time }) => (
-                                                    <option key={p} value={p}>{p === 0 ? '아침활동' : name} {time ? `(${time})` : ''}</option>
-                                            ))}
+                                            {editingItem.period === 0 ? (
+                                                <option value={0}>아침활동 (전체 요일 일괄 설정)</option>
+                                            ) : (
+                                                schedulePeriods
+                                                    .filter(p => !p.isLunch && !p.isBreak && p.period > 0)
+                                                    .map(({ period: p, name, time }) => (
+                                                        <option key={p} value={p}>{name} {time ? `(${time})` : ''}</option>
+                                                    ))
+                                            )}
                                         </select>
                                     </div>
 
@@ -1206,20 +1240,15 @@ function WeeklyPlanScheduleModalContent({
                                 </div>
 
                                 {editingItem.period === 0 && (
-                                    <div className="mb-4 p-3 bg-violet-50/90 border border-violet-200 rounded-2xl flex items-center justify-between">
-                                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                                            <input
-                                                type="checkbox"
-                                                checked={editingItem.applyToAllDays !== false}
-                                                onChange={(e) => setEditingItem({ ...editingItem, applyToAllDays: e.target.checked })}
-                                                className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 cursor-pointer"
-                                            />
-                                            <span className="text-xs font-bold text-violet-900">
-                                                월~금 모든 요일에 동일하게 일괄 적용
+                                    <div className="mb-4 p-3 bg-amber-50/90 border border-amber-200 rounded-2xl flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                                            <span className="text-xs font-bold text-amber-900">
+                                                아침활동은 월~금 모든 요일에 동일하게 일괄 적용됩니다.
                                             </span>
-                                        </label>
-                                        <span className="text-[11px] font-bold text-violet-600">
-                                            {editingItem.applyToAllDays !== false ? "모든 요일 일괄 적용" : `${editingItem.day}요일만 개별 수정`}
+                                        </div>
+                                        <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300 shrink-0">
+                                            월~금 전체 요일 일괄
                                         </span>
                                     </div>
                                 )}
@@ -1400,13 +1429,13 @@ function WeeklyPlanScheduleModalContent({
                                                                     }}
                                                                 >
                                                                     <div 
-                                                                        onClick={() => handleStartAdd(day, period)}
+                                                                        onClick={() => period === 0 ? handleOpenMorningActivityBulk() : handleStartAdd(day, period)}
                                                                         className={`h-20 rounded-xl border border-dashed flex items-center justify-center transition-all cursor-pointer ${
                                                                             isDropTarget
                                                                                 ? 'border-violet-500 bg-violet-100/70 text-violet-700 font-bold scale-[1.02] shadow-md ring-2 ring-violet-400'
                                                                                 : 'border-slate-200 hover:border-violet-300 hover:bg-violet-50/30 text-slate-300 hover:text-violet-600'
                                                                         }`}
-                                                                        title={`${day}요일 ${period === 0 ? '아침활동' : period + '교시'} 추가하기 또는 드래그하여 이 자리로 이동`}
+                                                                        title={`${day}요일 ${period === 0 ? '아침활동 일괄 설정하기' : period + '교시 추가하기'} 또는 드래그하여 이 자리로 이동`}
                                                                     >
                                                                         {isDropTarget ? (
                                                                             <span className="text-xs font-bold text-violet-700 animate-pulse">
@@ -1476,7 +1505,7 @@ function WeeklyPlanScheduleModalContent({
                                                                             <div className="flex items-center gap-1 min-w-0">
                                                                                 <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-violet-500 shrink-0 cursor-grab transition-colors" title="드래그하여 다른 교시와 자리 교환" />
                                                                                 <span className="font-extrabold text-xs text-slate-900 group-hover:text-violet-900 transition-colors truncate">
-                                                                                    {item.subject}
+                                                                                    {getDisplaySubjectName(item.subject, item.matchedBookId, books, item.raw, item.topic)}
                                                                                 </span>
                                                                             </div>
                                                                             {isBlank ? (
@@ -1504,14 +1533,25 @@ function WeeklyPlanScheduleModalContent({
 
                                                                     {/* Action footer */}
                                                                     <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-200/60">
-                                                                        <button
-                                                                            onClick={() => handleStartEdit(day, items.indexOf(item), item)}
-                                                                            className="text-[10px] text-slate-400 hover:text-violet-600 font-bold flex items-center gap-0.5 cursor-pointer"
-                                                                            title="수정"
-                                                                        >
-                                                                            <Edit2 className="w-3 h-3" />
-                                                                            <span>수정</span>
-                                                                        </button>
+                                                                        {period === 0 ? (
+                                                                            <button
+                                                                                onClick={handleOpenMorningActivityBulk}
+                                                                                className="text-[10px] text-amber-700 hover:text-amber-900 font-bold flex items-center gap-1 cursor-pointer bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200/80 transition-colors"
+                                                                                title="아침활동 일괄 설정"
+                                                                            >
+                                                                                <Sparkles className="w-3 h-3 text-amber-600" />
+                                                                                <span>일괄 설정</span>
+                                                                            </button>
+                                                                        ) : (
+                                                                            <button
+                                                                                onClick={() => handleStartEdit(day, items.indexOf(item), item)}
+                                                                                className="text-[10px] text-slate-400 hover:text-violet-600 font-bold flex items-center gap-0.5 cursor-pointer"
+                                                                                title="수정"
+                                                                            >
+                                                                                <Edit2 className="w-3 h-3" />
+                                                                                <span>수정</span>
+                                                                            </button>
+                                                                        )}
 
                                                                         <button
                                                                             onClick={() => handleOpenItem(item)}
@@ -1632,7 +1672,7 @@ function WeeklyPlanScheduleModalContent({
                                                     <div className="min-w-0">
                                                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                             <h4 className="text-base font-bold text-slate-900 group-hover:text-violet-900 transition-colors">
-                                                                {item.subject}
+                                                                {getDisplaySubjectName(item.subject, item.matchedBookId, books, item.raw, item.topic)}
                                                             </h4>
 
                                                             {isBlank ? (
@@ -1670,21 +1710,34 @@ function WeeklyPlanScheduleModalContent({
 
                                                 {/* Action Buttons */}
                                                 <div className="flex items-center gap-1.5 shrink-0">
-                                                    <button
-                                                        onClick={() => handleStartEdit(selectedDay, idx, item)}
-                                                        className="p-2 text-slate-400 hover:text-violet-700 hover:bg-violet-100 rounded-xl transition-colors cursor-pointer"
-                                                        title="이 교시 내용 수정"
-                                                    >
-                                                        <Edit2 className="w-4 h-4" />
-                                                    </button>
+                                                    {item.period === 0 ? (
+                                                        <button
+                                                            onClick={handleOpenMorningActivityBulk}
+                                                            className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-amber-300 shadow-2xs"
+                                                            title="아침활동은 일괄 설정을 통해 모든 요일에 동일하게 적용됩니다"
+                                                        >
+                                                            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                                            <span>일괄 설정</span>
+                                                        </button>
+                                                    ) : (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleStartEdit(selectedDay, idx, item)}
+                                                                className="p-2 text-slate-400 hover:text-violet-700 hover:bg-violet-100 rounded-xl transition-colors cursor-pointer"
+                                                                title="이 교시 내용 수정"
+                                                            >
+                                                                <Edit2 className="w-4 h-4" />
+                                                            </button>
 
-                                                    <button
-                                                        onClick={() => handleDeleteItem(selectedDay, item.period !== undefined ? item.period : 1)}
-                                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
-                                                        title="이 교시 항목 삭제"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
+                                                            <button
+                                                                onClick={() => handleDeleteItem(selectedDay, item.period !== undefined ? item.period : 1)}
+                                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                                                                title="이 교시 항목 삭제"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        </>
+                                                    )}
 
                                                     <button
                                                         onClick={() => handleOpenItem(item)}

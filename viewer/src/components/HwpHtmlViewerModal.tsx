@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { 
     X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw, 
-    ExternalLink, Download, FileText, Loader2, AlertCircle, Upload 
+    ExternalLink, Download, FileText, Loader2, AlertCircle, Upload,
+    Maximize2, Minimize2 
 } from 'lucide-react';
 import init, { HwpDocument } from '@rhwp/core';
 import wasmUrl from '@rhwp/core/rhwp_bg.wasm?url';
@@ -46,6 +47,7 @@ export default function HwpHtmlViewerModal({
     const [viewMode, setViewMode] = useState<'scroll' | 'single'>('scroll');
     const [resolvedTitle, setResolvedTitle] = useState(docTitle || "주학습 계획안");
     const [isSelectingFile, setIsSelectingFile] = useState(false);
+    const [isMaximized, setIsMaximized] = useState(false);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -304,8 +306,8 @@ export default function HwpHtmlViewerModal({
     const totalPages = Math.max(pageSvgs.length, pageHtmls.length);
 
     return (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4 animate-in fade-in select-none">
-            <div className="bg-slate-900 text-slate-100 rounded-3xl shadow-2xl border border-slate-700 w-full max-w-5xl h-[94vh] flex flex-col overflow-hidden">
+        <div className={`fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-md ${isMaximized ? 'p-0' : 'p-2 sm:p-4'} animate-in fade-in select-none`}>
+            <div className={`bg-slate-900 text-slate-100 shadow-2xl border border-slate-700 w-full flex flex-col overflow-hidden transition-all ${isMaximized ? 'w-screen h-screen rounded-none' : 'max-w-5xl h-[94vh] rounded-3xl'}`}>
                 {/* Header */}
                 <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 gap-3 flex-wrap">
                     <div className="flex items-center gap-3 min-w-0">
@@ -424,10 +426,19 @@ export default function HwpHtmlViewerModal({
                             <Download className="w-3.5 h-3.5" />
                         </button>
 
+                        {/* Maximize / Restore button */}
+                        <button
+                            onClick={() => setIsMaximized(!isMaximized)}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
+                            title={isMaximized ? "창 크기 복원" : "창 확대"}
+                        >
+                            {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                        </button>
+
                         {/* Close button */}
                         <button
                             onClick={onClose}
-                            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                             title="닫기"
                         >
                             <X className="w-5 h-5" />

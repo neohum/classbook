@@ -31,8 +31,9 @@ import {
     getDefaultPageAnnotations,
     serializeKnowledgeBundle
 } from '../utils/knowledgeTermMatcher';
-import { resolveBookForSubject } from '../utils/bookResolver';
+import { resolveBookForSubject, getDisplaySubjectName } from '../utils/bookResolver';
 import { getCurrentClassStatus } from '../utils/scheduleHelper';
+import { getStoredMorningActivity } from '../utils/morningActivityHelper';
 
 let sharedAudioContext: AudioContext | null = null;
 const initAudioContext = () => {
@@ -347,7 +348,7 @@ export default function ViewerPage() {
                 nextPeriodName: status.nextPeriodName,
                 nextPeriodTime: status.nextPeriodTime
             });
-            showToast(`${status.periodName}: ${status.nextItem ? `다음 [${status.nextPeriodName} ${status.nextItem.subject}] 수업 안내가 표시됩니다.` : '쉬는 시간 안내가 표시됩니다.'}`);
+            showToast(`${status.periodName}: ${status.nextItem ? `다음 [${status.nextPeriodName} ${getDisplaySubjectName(status.nextItem.subject, status.nextItem.matchedBookId, books, status.nextItem.raw, status.nextItem.topic)}] 수업 안내가 표시됩니다.` : '쉬는 시간 안내가 표시됩니다.'}`);
             return;
         }
 
@@ -355,21 +356,28 @@ export default function ViewerPage() {
         const targetItem = status.item;
         if (targetItem) {
             if (targetItem.period === 0 || targetItem.matchedBookId === 'blank') {
-                const topicQ = targetItem.topic ? `&topic=${encodeURIComponent(targetItem.topic)}` : '';
-                const subjQ = `&subject=${encodeURIComponent(targetItem.subject || '아침활동')}`;
+                let effectiveTopic = targetItem.topic;
+                let effectiveSubject = targetItem.subject;
+                if (targetItem.period === 0) {
+                    const storedM = getStoredMorningActivity();
+                    effectiveTopic = effectiveTopic || storedM.topic || '아침 독서 및 자율활동';
+                    effectiveSubject = effectiveSubject || storedM.subject || '아침활동';
+                }
+                const topicQ = `&topic=${encodeURIComponent(effectiveTopic || '')}`;
+                const subjQ = `&subject=${encodeURIComponent(effectiveSubject || '아침활동')}`;
                 const periodQ = `&period=${encodeURIComponent(status.periodName)}`;
-                showToast(`주학습계획안 반영: ${status.periodName} [${targetItem.topic || targetItem.subject}] 빈 화면으로 이동합니다.`);
+                showToast(`주학습계획안 반영: ${status.periodName} [${effectiveTopic || effectiveSubject}] 빈 화면으로 이동합니다.`);
                 if (bookId === 'blank') {
                     setActiveLesson({
                         periodName: status.periodName,
-                        subject: targetItem.subject || '아침활동',
+                        subject: effectiveSubject || '아침활동',
                         pageStr: '',
                         startPage: 0,
-                        topic: targetItem.topic,
+                        topic: effectiveTopic,
                         matchedBookId: 'blank'
                     });
                 } else {
-                    navigate(`/viewer/blank?${topicQ ? topicQ.slice(1) : ''}${subjQ}${periodQ}`);
+                    navigate(`/viewer/blank?${topicQ.slice(1)}${subjQ}${periodQ}`);
                 }
                 return;
             }
@@ -385,7 +393,7 @@ export default function ViewerPage() {
                     setInputPage(targetPage.toString());
                     setActiveLesson({
                         periodName: status.periodName,
-                        subject: targetItem.subject,
+                        subject: getDisplaySubjectName(targetItem.subject, targetItem.matchedBookId, books, targetItem.raw, targetItem.topic),
                         pageStr: targetItem.pageStr || `${targetPage}쪽`,
                         startPage: targetPage,
                         topic: targetItem.topic,
@@ -419,7 +427,7 @@ export default function ViewerPage() {
                     nextPeriodName: '',
                     nextPeriodTime: ''
                 });
-                showToast(`${status.periodName} [${targetItem.subject}] 교과서가 없는 수업입니다. 알림을 표시합니다.`);
+                showToast(`${status.periodName} [${getDisplaySubjectName(targetItem.subject, targetItem.matchedBookId, books, targetItem.raw, targetItem.topic)}] 교과서가 없는 수업입니다. 알림을 표시합니다.`);
             }
         } else {
             setAlertData({
@@ -671,18 +679,26 @@ export default function ViewerPage() {
         }
 
         let targetItem = dayItems.find(it => it.period === activePeriod);
-        if (activePeriod === 0 && !targetItem) {
-            const defaultTopic = DEFAULT_MORNING_TOPICS[targetDay] || '아침 자율 독서 및 활동';
-            targetItem = {
-                period: 0,
-                subject: '아침활동',
-                matchedBookId: 'blank',
-                startPage: 0,
-                endPage: 0,
-                pageStr: '',
-                topic: defaultTopic,
-                raw: `아침활동 ${defaultTopic}`
-            } as any;
+        if (activePeriod === 0) {
+            const storedM = getStoredMorningActivity();
+            if (!targetItem) {
+                targetItem = {
+                    period: 0,
+                    subject: storedM.subject || '아침활동',
+                    matchedBookId: 'blank',
+                    startPage: 0,
+                    endPage: 0,
+                    pageStr: '',
+                    topic: storedM.topic || '아침 독서 및 자율활동',
+                    raw: `아침활동 ${storedM.topic || '아침 독서 및 자율활동'}`
+                } as any;
+            } else if (!targetItem.topic) {
+                targetItem = {
+                    ...targetItem,
+                    topic: storedM.topic || '아침 독서 및 자율활동',
+                    subject: targetItem.subject || storedM.subject || '아침활동'
+                };
+            }
         } else if (!targetItem) {
             targetItem = dayItems[0];
         }
@@ -762,18 +778,26 @@ export default function ViewerPage() {
                     if (currentPlanRef.current?.schedule && dayOfWeek !== '일' && dayOfWeek !== '토') {
                         const dayItems = currentPlanRef.current.schedule[dayOfWeek] || [];
                         planItem = dayItems.find(it => it.period === periodNum) || null;
-                        if (periodNum === 0 && !planItem) {
-                            const defaultTopic = DEFAULT_MORNING_TOPICS[dayOfWeek] || '아침 자율 독서 및 활동';
-                            planItem = {
-                                period: 0,
-                                subject: '아침활동',
-                                matchedBookId: 'blank',
-                                startPage: 0,
-                                endPage: 0,
-                                pageStr: '',
-                                topic: defaultTopic,
-                                raw: `아침활동 ${defaultTopic}`
-                            } as any;
+                        if (periodNum === 0) {
+                            const storedM = getStoredMorningActivity();
+                            if (!planItem) {
+                                planItem = {
+                                    period: 0,
+                                    subject: storedM.subject || '아침활동',
+                                    matchedBookId: 'blank',
+                                    startPage: 0,
+                                    endPage: 0,
+                                    pageStr: '',
+                                    topic: storedM.topic || '아침 독서 및 자율활동',
+                                    raw: `아침활동 ${storedM.topic || '아침 독서 및 자율활동'}`
+                                } as any;
+                            } else if (!planItem.topic) {
+                                planItem = {
+                                    ...planItem,
+                                    topic: storedM.topic || '아침 독서 및 자율활동',
+                                    subject: planItem.subject || storedM.subject || '아침활동'
+                                };
+                            }
                         } else if (!planItem && dayItems.length > 0) {
                             planItem = dayItems[periodNum - 1] || dayItems[0] || null;
                         }
@@ -1375,9 +1399,14 @@ export default function ViewerPage() {
 
     // Handle topic/subject/period from URL params (e.g. from Weekly Plan)
     useEffect(() => {
-        const topicParam = searchParams.get('topic');
-        const subjectParam = searchParams.get('subject');
+        let topicParam = searchParams.get('topic');
+        let subjectParam = searchParams.get('subject');
         const periodParam = searchParams.get('period');
+        if (periodParam?.includes('아침') || subjectParam?.includes('아침')) {
+            const m = getStoredMorningActivity();
+            if (!topicParam) topicParam = m.topic;
+            if (!subjectParam) subjectParam = m.subject;
+        }
         if (topicParam || subjectParam || periodParam) {
             setActiveLesson({
                 periodName: periodParam || (bookId === 'blank' ? '활동 수업' : '수업'),
@@ -1893,7 +1922,7 @@ export default function ViewerPage() {
                                 {activeLesson?.subject && <span>• {activeLesson.subject}</span>}
                             </div>
                             <h2 className="text-3xl sm:text-5xl font-black mb-4 tracking-tight break-keep leading-tight drop-shadow-sm">
-                                {activeLesson?.topic || activeLesson?.subject || '빈 화면 (활동 수업)'}
+                                {activeLesson?.topic || (activeLesson?.periodName?.includes('아침') || activeLesson?.subject?.includes('아침') ? getStoredMorningActivity().topic : '') || activeLesson?.subject || '빈 화면 (활동 수업)'}
                             </h2>
                             <p className={`text-sm sm:text-base font-medium max-w-xl mx-auto break-keep ${isWhiteboard ? 'text-slate-600' : 'text-slate-300'}`}>
                                 {activeLesson?.topic ? '교과서 없는 활동 수업입니다. 판서 도구를 이용해 자유롭게 필기하세요.' : '판서 모드를 켜고 화면에 자유롭게 필기하거나 수업을 진행하세요.'}

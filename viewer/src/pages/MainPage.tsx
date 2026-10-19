@@ -31,8 +31,9 @@ import ScheduleConfigModal, {
     sanitizeScheduleItems, 
     type ScheduleItem 
 } from '../components/ScheduleConfigModal';
-import { resolveBookForSubject } from '../utils/bookResolver';
+import { resolveBookForSubject, getDisplaySubjectName } from '../utils/bookResolver';
 import { getCurrentClassStatus } from '../utils/scheduleHelper';
+import { getStoredMorningActivity } from '../utils/morningActivityHelper';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 // Configure PDF.js worker using Vite's ?url literal for local bundling
@@ -178,7 +179,7 @@ export default function MainPage() {
             setAlertIsRestTime(true);
             setAlertCustomMessage(status.customMessage);
             setIsAlertModalOpen(true);
-            showToast(`${status.periodName}: ${status.nextItem ? `다음 [${status.nextPeriodName} ${status.nextItem.subject}] 수업 안내가 표시됩니다.` : '쉬는 시간 안내가 표시됩니다.'}`);
+            showToast(`${status.periodName}: ${status.nextItem ? `다음 [${status.nextPeriodName} ${getDisplaySubjectName(status.nextItem.subject, status.nextItem.matchedBookId, textbooks, status.nextItem.raw, status.nextItem.topic)}] 수업 안내가 표시됩니다.` : '쉬는 시간 안내가 표시됩니다.'}`);
             return;
         }
 
@@ -186,12 +187,19 @@ export default function MainPage() {
         const targetItem = status.item;
         if (targetItem) {
             if (targetItem.period === 0 || targetItem.matchedBookId === 'blank') {
-                const topicQ = targetItem.topic ? `&topic=${encodeURIComponent(targetItem.topic)}` : '';
-                const subjQ = `&subject=${encodeURIComponent(targetItem.subject || '아침활동')}`;
+                let effectiveTopic = targetItem.topic;
+                let effectiveSubject = targetItem.subject;
+                if (targetItem.period === 0) {
+                    const storedM = getStoredMorningActivity();
+                    effectiveTopic = effectiveTopic || storedM.topic || '아침 독서 및 자율활동';
+                    effectiveSubject = effectiveSubject || storedM.subject || '아침활동';
+                }
+                const topicQ = `&topic=${encodeURIComponent(effectiveTopic || '')}`;
+                const subjQ = `&subject=${encodeURIComponent(effectiveSubject || '활동 수업')}`;
                 const periodQ = `&period=${encodeURIComponent(status.periodName)}`;
-                showToast(`주학습계획안 반영: ${status.targetDay}요일 ${status.periodName} [${targetItem.topic || targetItem.subject}] 빈 화면으로 이동합니다.`);
+                showToast(`주학습계획안 반영: ${status.targetDay}요일 ${status.periodName} [${effectiveTopic || effectiveSubject}] 빈 화면으로 이동합니다.`);
                 setTimeout(() => {
-                    navigate(`/viewer/blank?${topicQ ? topicQ.slice(1) : ''}${subjQ}${periodQ}`);
+                    navigate(`/viewer/blank?${topicQ.slice(1)}${subjQ}${periodQ}`);
                 }, 400);
                 return;
             }
@@ -220,7 +228,7 @@ export default function MainPage() {
                 setAlertIsRestTime(false);
                 setAlertCustomMessage(status.customMessage);
                 setIsAlertModalOpen(true);
-                showToast(`${status.periodName} [${targetItem.subject}] 교과서가 없는 수업(자율활동 등)입니다. 알림을 표시합니다.`);
+                showToast(`${status.periodName} [${getDisplaySubjectName(targetItem.subject, targetItem.matchedBookId, currentBooks, targetItem.raw, targetItem.topic)}] 교과서가 없는 수업(자율활동 등)입니다. 알림을 표시합니다.`);
             }
         } else {
             setAlertPeriod(1);
@@ -848,7 +856,7 @@ export default function MainPage() {
         setAlertPeriodTime(periodTime);
         setAlertItem(currentItem || null);
         setAlertIsRestTime(false);
-        setAlertCustomMessage(activeSched?.startMessage || `${periodName} [${currentItem?.subject || '수업'}] 시작 시간입니다!`);
+        setAlertCustomMessage(activeSched?.startMessage || `${periodName} [${getDisplaySubjectName(currentItem?.subject, currentItem?.matchedBookId, textbooks, currentItem?.raw, currentItem?.topic) || '수업'}] 시작 시간입니다!`);
         setIsAlertModalOpen(true);
     };
 
@@ -1170,6 +1178,7 @@ export default function MainPage() {
             <WeeklyPlanAlertModal
                 isOpen={isAlertModalOpen}
                 isRestTime={alertIsRestTime}
+                compactBannerMode={false}
                 periodName={alertPeriodName || `${alertPeriod}교시`}
                 periodTime={alertPeriodTime}
                 customMessage={alertCustomMessage}
