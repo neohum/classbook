@@ -1,11 +1,11 @@
 {
-  "version": "1.2.28",
+  "version": "1.2.29",
   "releaseDate": "2026-10-20",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.28/classbook-setup-v1.2.28.exe",
-  "installerName": "classbook-setup-v1.2.28.exe",
-  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.28.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261019%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261019T232953Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e798ac3b5b92b695c9aa9ea1fdc12c7bb2d61cbb0e43e0f841ce77d41699abcd",
-  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.28.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261019%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261019T232952Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=aadea8f9bbdc01d74c5738844f8a855feca7855950119da964be6fdd77da15de",
-  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.28.exe",
-  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.28.exe",
-  "notes": "초등 1·2학년 통합교과(바른생활, 슬기로운생활, 즐거운생활)를 교과서 파일명으로 과목 알림 표시 및 주안 시간표 반영 (v1.2.28)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.29/classbook-setup-v1.2.29.exe",
+  "installerName": "classbook-setup-v1.2.29.exe",
+  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.29.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261019%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261019T234153Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2210c417df3df9e50632c1da1db0a98288123c1b879f2d02b59049b66f0ad960",
+  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.29.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261019%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261019T234152Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=36d0a63441b3bf80d9a09b5e9d1f0dd27de93e6b1f1b612c67b774ce9a1bde33",
+  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.29.exe",
+  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.29.exe",
+  "notes": "주안 미리보기 시간표 화면 렌더링 참조 오류 수정 및 안정화 (v1.2.29)"
 }

@@ -335,6 +335,7 @@ export default function ViewerPage() {
         const plan = currentPlanRef.current || currentPlan;
         const currentScheds = getStoredSchedule();
         const status = getCurrentClassStatus(new Date(), currentScheds, plan);
+        const books = (await GetTextbooks()) || [];
 
         if (status.isRestTime) {
             setAlertData({
@@ -383,7 +384,6 @@ export default function ViewerPage() {
             }
 
             const targetPage = targetItem.startPage || 1;
-            const books = await GetTextbooks();
             const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, books || []);
 
             if (resolved) {
