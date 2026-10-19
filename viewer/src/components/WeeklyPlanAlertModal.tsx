@@ -1,7 +1,10 @@
-import React from 'react';
-import { BookOpen, X, ArrowRight, Clock, Sparkles, Coffee, Check, Square, Utensils } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { BookOpen, X, ArrowRight, Clock, Sparkles, Coffee, Check, Square, Utensils, Maximize, Minimize } from 'lucide-react';
 import { main } from '../../wailsjs/go/models';
+import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen } from '../../wailsjs/runtime/runtime';
 import LessonTopicCenterBanner from './LessonTopicCenterBanner';
+import { getDisplaySubjectName } from '../utils/bookResolver';
+import { getStoredMorningActivity } from '../utils/morningActivityHelper';
 
 interface Props {
     isOpen: boolean;
@@ -38,7 +41,55 @@ export default function WeeklyPlanAlertModal({
     onGoToBook,
     onGoToBlank
 }: Props) {
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    useEffect(() => {
+        const checkFs = () => {
+            const fs = !!document.fullscreenElement;
+            setIsFullscreen(fs);
+        };
+        document.addEventListener('fullscreenchange', checkFs);
+        if (typeof WindowIsFullscreen === 'function') {
+            WindowIsFullscreen().then(fs => setIsFullscreen(fs)).catch(() => {});
+        }
+        return () => document.removeEventListener('fullscreenchange', checkFs);
+    }, []);
+
+    const toggleFullscreen = () => {
+        try {
+            if (typeof WindowIsFullscreen === 'function' && typeof WindowFullscreen === 'function' && typeof WindowUnfullscreen === 'function') {
+                WindowIsFullscreen().then(fs => {
+                    if (fs) {
+                        WindowUnfullscreen();
+                        setIsFullscreen(false);
+                    } else {
+                        WindowFullscreen();
+                        setIsFullscreen(true);
+                    }
+                }).catch(() => {
+                    if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => {});
+                    } else {
+                        document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => {});
+                    }
+                });
+            } else {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => {});
+                } else {
+                    document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => {});
+                }
+            }
+        } catch (e) {
+            console.error("Fullscreen toggle error:", e);
+        }
+    };
+
     if (!isOpen) return null;
+
+    // Morning activity unified resolution
+    const storedMorning = getStoredMorningActivity();
+    const isMorningPeriod = periodName.includes('아침') || item?.period === 0 || nextItem?.period === 0;
 
     if (!isRestTime && compactBannerMode) {
         return (
@@ -47,11 +98,11 @@ export default function WeeklyPlanAlertModal({
                 lesson={{
                     periodName,
                     periodTime,
-                    subject: item?.subject || `${periodName} 수업`,
+                    subject: getDisplaySubjectName(item?.subject || (isMorningPeriod ? storedMorning.subject : `${periodName} 수업`), item?.matchedBookId, [], undefined, item?.topic),
                     pageStr: item?.pageStr,
                     startPage: item?.startPage,
                     endPage: item?.endPage,
-                    topic: item?.topic,
+                    topic: item?.topic || (isMorningPeriod ? storedMorning.topic : undefined),
                     matchedBookId: item?.matchedBookId,
                     customMessage
                 }}
@@ -72,9 +123,14 @@ export default function WeeklyPlanAlertModal({
     const upcoming = nextItem || (isRestTime ? item : null);
     const targetItem = isRestTime ? upcoming : item;
 
+    const isMorning = Boolean(isMorningPeriod || targetItem?.period === 0 || upcoming?.period === 0);
+    const effectiveTopic = targetItem?.topic || (isMorning ? storedMorning.topic : '') || '';
+    const rawSubject = targetItem?.subject || (isMorning ? storedMorning.subject : '') || (periodName.includes('아침') ? '아침활동' : '활동 수업');
+    const effectiveSubject = getDisplaySubjectName(rawSubject, targetItem?.matchedBookId, [], undefined, targetItem?.topic);
+
     const targetPage = targetItem?.startPage || 1;
     const targetBookId = targetItem?.matchedBookId || targetItem?.subject;
-    const isBlank = targetBookId === 'blank' || targetItem?.matchedBookId === 'blank' || targetItem?.period === 0;
+    const isBlank = isMorning || targetBookId === 'blank' || targetItem?.matchedBookId === 'blank' || targetItem?.period === 0;
 
     const upcomingTitle = nextPeriodName || (upcoming ? (upcoming.period === 0 ? '아침활동' : `${upcoming.period}교시`) : '다음 교시');
 
@@ -82,7 +138,7 @@ export default function WeeklyPlanAlertModal({
         onClose();
         if (isBlank) {
             if (onGoToBlank && targetItem) {
-                onGoToBlank(targetItem.subject, targetItem.topic, upcomingTitle);
+                onGoToBlank(effectiveSubject, effectiveTopic, upcomingTitle);
             }
         } else if (onGoToBook && targetBookId) {
             onGoToBook(targetBookId, targetPage);
@@ -103,14 +159,25 @@ export default function WeeklyPlanAlertModal({
                 <div className={`absolute -top-32 -left-32 w-72 h-72 ${isRestTime ? 'bg-amber-600/20' : 'bg-violet-600/25'} rounded-full blur-3xl pointer-events-none`} />
                 <div className={`absolute -bottom-32 -right-32 w-72 h-72 ${isRestTime ? 'bg-orange-600/20' : 'bg-indigo-600/25'} rounded-full blur-3xl pointer-events-none`} />
 
-                {/* Close X Button (Top Right) */}
-                <button
-                    onClick={onClose}
-                    className="absolute top-5 right-5 p-2.5 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer z-10"
-                    title="닫기"
-                >
-                    <X className="w-7 h-7" />
-                </button>
+                {/* Top Right Buttons: Fullscreen & Close */}
+                <div className="absolute top-4 right-4 sm:top-5 sm:right-5 flex items-center gap-2 z-10">
+                    <button
+                        onClick={toggleFullscreen}
+                        className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5 border border-white/20 cursor-pointer shadow-xs active:scale-95"
+                        title="화면 전체 보기 (전체화면 전환)"
+                    >
+                        {isFullscreen ? <Minimize className="w-4 h-4 text-amber-300" /> : <Maximize className="w-4 h-4 text-violet-300" />}
+                        <span className="font-extrabold">{isFullscreen ? "창 모드" : "화면 전체 보기"}</span>
+                    </button>
+
+                    <button
+                        onClick={() => onClose()}
+                        className="p-2 sm:p-2.5 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                        title="닫기"
+                    >
+                        <X className="w-6 h-6 sm:w-7 sm:h-7" />
+                    </button>
+                </div>
 
                 {/* Top Section: Period Badge */}
                 <div className="mb-3">
@@ -156,11 +223,10 @@ export default function WeeklyPlanAlertModal({
 
                                     {/* Subject Title */}
                                     <div className="text-2xl sm:text-4xl md:text-5xl font-black text-white flex items-center justify-center gap-2">
-                                        <span>{upcoming.subject}</span>
+                                        <span>{getDisplaySubjectName(upcoming.subject, upcoming.matchedBookId, [], undefined, upcoming.topic)}</span>
                                         <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-400 inline animate-pulse" />
                                     </div>
 
-                                    {/* Textbook & Page Number (HUGE & EYE-CATCHING) */}
                                     {!isBlank && (upcoming.pageStr || (upcoming.startPage && upcoming.startPage > 0)) ? (
                                         <div className="bg-gradient-to-b from-amber-500/20 to-amber-500/5 border-2 border-amber-400/60 rounded-2xl p-4 sm:p-6 my-1">
                                             <div className="text-xs sm:text-sm font-extrabold text-amber-300 tracking-widest uppercase mb-1">
@@ -175,6 +241,18 @@ export default function WeeklyPlanAlertModal({
                                                     <span>교과서: <strong className="text-white underline decoration-amber-400 decoration-2 underline-offset-4">{upcoming.matchedBookId}</strong></span>
                                                 </div>
                                             )}
+                                        </div>
+                                    ) : isMorning ? (
+                                        <div className="bg-gradient-to-b from-amber-500/25 to-amber-500/10 border-2 border-amber-400/80 rounded-2xl p-5 sm:p-7 my-2 shadow-lg">
+                                            <div className="text-xs sm:text-sm font-extrabold text-amber-300 tracking-wider mb-2">
+                                                아침활동 내용
+                                            </div>
+                                            <div className="text-2xl sm:text-4xl md:text-5xl font-black text-amber-300 drop-shadow-[0_8px_20px_rgba(245,158,11,0.5)] leading-snug break-keep">
+                                                {effectiveTopic || storedMorning.topic || '아침 독서 및 자율활동'}
+                                            </div>
+                                            <div className="text-xs sm:text-sm text-slate-300 mt-2 font-medium">
+                                                지정된 아침활동을 준비하고 자율적으로 진행합니다
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="bg-emerald-500/15 border-2 border-emerald-400/50 rounded-2xl p-4 my-1">
@@ -191,7 +269,7 @@ export default function WeeklyPlanAlertModal({
                                     )}
 
                                     {/* Topic (학습 주제) */}
-                                    {upcoming.topic && (
+                                    {!isMorning && upcoming.topic && (
                                         <div className="bg-slate-900/70 border border-slate-700/80 rounded-xl px-4 py-2 text-xs sm:text-sm text-slate-200">
                                             <span className="text-violet-300 font-extrabold mr-2">학습 주제:</span>
                                             <span className="font-bold">{upcoming.topic}</span>
@@ -213,7 +291,7 @@ export default function WeeklyPlanAlertModal({
                             {/* Class Start: Subject Name Header */}
                             <div>
                                 <h3 className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight drop-shadow-md flex items-center justify-center gap-3 flex-wrap">
-                                    <span>{item?.subject || `${periodName} 수업`}</span>
+                                    <span>{effectiveSubject || `${periodName} 수업`}</span>
                                     <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-yellow-400 inline animate-pulse" />
                                 </h3>
                                 {customMessage && (
@@ -223,8 +301,8 @@ export default function WeeklyPlanAlertModal({
                                 )}
                             </div>
 
-                            {/* Learning Topic (학습 주제) */}
-                            {item?.topic && (
+                            {/* Learning Topic (학습 주제 - 일반 수업일 때만) */}
+                            {!isMorning && item?.topic && (
                                 <div className="bg-slate-800/90 border-2 border-violet-500/50 rounded-3xl p-5 sm:p-7 shadow-xl max-w-3xl mx-auto">
                                     <div className="text-xs sm:text-sm font-extrabold text-violet-300 tracking-wider uppercase mb-1">
                                         학습 주제
@@ -235,10 +313,22 @@ export default function WeeklyPlanAlertModal({
                                 </div>
                             )}
 
-                            {/* Textbook Page (교과서 페이지) */}
-                            {item ? (
+                            {/* Textbook Page or Morning/Activity Box */}
+                            {item || isMorning ? (
                                 <div className="bg-gradient-to-b from-amber-500/15 to-amber-500/5 border-2 border-amber-400/60 rounded-3xl p-6 sm:p-8 shadow-2xl max-w-3xl mx-auto">
-                                    {item.pageStr || (item.startPage && item.startPage > 0) ? (
+                                    {isMorning ? (
+                                        <div className="py-3">
+                                            <div className="text-xs sm:text-sm font-bold text-amber-300 tracking-widest uppercase mb-2">
+                                                아침활동 내용
+                                            </div>
+                                            <div className="text-3xl sm:text-5xl md:text-6xl font-black text-amber-300 drop-shadow-[0_8px_25px_rgba(245,158,11,0.5)] leading-tight break-keep">
+                                                {effectiveTopic || storedMorning.topic || '아침 독서 및 자율활동'}
+                                            </div>
+                                            <div className="text-sm sm:text-base text-slate-300 mt-3 font-medium">
+                                                스스로 독서를 하거나 지정된 아침 자율활동을 진행하세요
+                                            </div>
+                                        </div>
+                                    ) : (item?.pageStr || (item?.startPage && item.startPage > 0)) ? (
                                         <>
                                             <div className="text-sm sm:text-base font-bold text-amber-300 tracking-widest uppercase mb-1">
                                                 교과서 쪽수

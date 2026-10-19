@@ -95,3 +95,76 @@ export function resolveBookForSubject(
 
     return null;
 }
+
+/**
+ * Checks if a subject string refers to elementary 1-2 integrated subjects:
+ * 바른생활, 슬기로운생활, 즐거운생활, 바생, 슬생, 즐생, 통합 등
+ */
+export function isIntegratedSubject(subject?: string): boolean {
+    if (!subject) return false;
+    const clean = subject.replace(/[\s\-_()]/g, '');
+    return /^(바른생활|슬기로운생활|즐거운생활|바생|슬생|즐생|통합교과|통합)$/.test(clean) ||
+           clean.includes('바른생활') || clean.includes('슬기로운생활') || clean.includes('즐거운생활') ||
+           clean.includes('바생') || clean.includes('슬생') || clean.includes('즐생');
+}
+
+/**
+ * Returns the textbook file/book name for display as the subject name,
+ * specifically converting integrated subjects (바생, 슬생, 즐생) to their
+ * real textbook file name (e.g. "학교1-1", "사람들1-1", "탐험1-1", "하루" etc.).
+ */
+export function getDisplaySubjectName(
+    subject?: string,
+    matchedBookId?: string,
+    availableBooks: BookInfo[] = [],
+    rawText?: string,
+    topicText?: string
+): string {
+    const rawSubj = (subject || '').trim();
+    if (!rawSubj) {
+        return matchedBookId ? matchedBookId.replace(/\.pdf$/i, '').trim() : '수업';
+    }
+
+    // If it's NOT an integrated subject (e.g. 국어, 수학, 도덕, 아침활동 등), keep original subject
+    if (!isIntegratedSubject(rawSubj)) {
+        return rawSubj;
+    }
+
+    // 1. If matchedBookId is already available and not 'blank', use it!
+    if (matchedBookId && matchedBookId !== 'blank') {
+        const cleanBookId = matchedBookId.replace(/\.pdf$/i, '').trim();
+        if (!isIntegratedSubject(cleanBookId)) {
+            return cleanBookId;
+        }
+    }
+
+    // 2. Try resolving with availableBooks
+    if (availableBooks && availableBooks.length > 0) {
+        const resolved = resolveBookForSubject(rawSubj, matchedBookId, availableBooks);
+        if (resolved && !isIntegratedSubject(resolved.id)) {
+            return resolved.id.replace(/\.pdf$/i, '').trim();
+        }
+    }
+
+    // 3. Scan rawText and topicText for integrated theme textbook names
+    // 1-2 grade curriculum themes: 학교, 사람들, 탐험, 하루, 봄, 여름, 가을, 겨울, 세상, 마을, 이웃, 우리나라, 세계
+    const combined = `${rawText || ''} ${topicText || ''}`;
+    const themes = ['학교', '사람들', '탐험', '하루', '봄', '여름', '가을', '겨울', '세상', '마을', '이웃', '우리나라', '세계'];
+    for (const theme of themes) {
+        if (combined.includes(theme)) {
+            const matchInBooks = availableBooks.find(b => b.id.includes(theme) || b.title.includes(theme));
+            if (matchInBooks) {
+                return matchInBooks.id.replace(/\.pdf$/i, '').trim();
+            }
+            return theme;
+        }
+    }
+
+    // 4. If matchedBookId has something clean
+    if (matchedBookId && matchedBookId !== 'blank') {
+        return matchedBookId.replace(/\.pdf$/i, '').trim();
+    }
+
+    // 5. Fallback to original subject if nothing found
+    return rawSubj;
+}

@@ -1,6 +1,7 @@
 import { type ScheduleItem, isLunchSchedule, isBreakSchedule, parsePeriodFromName } from '../components/ScheduleConfigModal';
 import { main } from '../../wailsjs/go/models';
 import { DEFAULT_MORNING_TOPICS } from '../components/WeeklyPlanScheduleModal';
+import { getStoredMorningActivity } from './morningActivityHelper';
 
 export interface CurrentClassStatus {
     isRestTime: boolean;
@@ -49,18 +50,19 @@ export function getCurrentClassStatus(
     // Helper to find weekly plan item for a given period number
     const findPlanItem = (pNum: number): main.WeeklyPlanItem | null => {
         if (pNum === 0) {
+            const morningConfig = getStoredMorningActivity();
             const found = dayItems.find(it => it.period === 0);
-            if (found) return found;
-            const defTopic = DEFAULT_MORNING_TOPICS[targetDay] || '아침 자율 독서 및 활동';
+            const topic = (found?.topic && found.topic.trim()) || morningConfig.topic;
+            const subject = (found?.subject && found.subject.trim()) || morningConfig.subject;
             return {
                 period: 0,
-                subject: '아침활동',
+                subject: subject,
                 matchedBookId: 'blank',
                 startPage: 0,
                 endPage: 0,
                 pageStr: '',
-                topic: defTopic,
-                raw: `아침활동 ${defTopic}`
+                topic: topic,
+                raw: `${subject} ${topic}`
             };
         }
         if (pNum > 0) {

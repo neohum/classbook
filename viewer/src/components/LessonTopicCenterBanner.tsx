@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { BookOpen, X, ArrowRight, Clock, Sparkles, Square } from 'lucide-react';
 import type { OffsetDetectResult } from '../utils/ocrOffsetDetector';
+import { getDisplaySubjectName } from '../utils/bookResolver';
 
 export interface LessonBannerData {
     periodName: string;
@@ -161,6 +162,7 @@ export default function LessonTopicCenterBanner({
 
     if (!isOpen || !lesson) return null;
 
+    const displaySubject = getDisplaySubjectName(lesson.subject, lesson.matchedBookId, [], undefined, lesson.topic);
     const printedPage = lesson.startPage && lesson.startPage > 0 ? lesson.startPage : 1;
     const physicalPage = resolvePhysicalPageWithOffset(
         printedPage,
@@ -172,7 +174,7 @@ export default function LessonTopicCenterBanner({
     const isBlankLesson =
         lesson.matchedBookId === 'blank' ||
         (!lesson.matchedBookId && (!lesson.startPage || lesson.startPage <= 0));
-    const targetBook = lesson.matchedBookId || lesson.subject;
+    const targetBook = lesson.matchedBookId || displaySubject;
 
     const handleDismiss = () => {
         markLessonBannerDismissed(dismissKey);
@@ -184,7 +186,7 @@ export default function LessonTopicCenterBanner({
         onClose(dismissKey);
         if (isBlankLesson) {
             onOpenBlankActivity?.(
-                lesson.subject || '활동',
+                displaySubject || '활동',
                 lesson.topic || '',
                 lesson.periodName || '수업'
             );
@@ -244,7 +246,7 @@ export default function LessonTopicCenterBanner({
                             data-testid="lesson-banner-subject"
                             className="text-xl sm:text-2xl font-black text-white flex items-center gap-1.5 truncate break-keep"
                         >
-                            <span className="truncate">{lesson.subject || '수업'}</span>
+                            <span className="truncate">{displaySubject || '수업'}</span>
                             <Sparkles className="w-4 h-4 text-yellow-400 shrink-0" />
                         </div>
                     </div>
