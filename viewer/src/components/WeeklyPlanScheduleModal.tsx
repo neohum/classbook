@@ -1505,7 +1505,7 @@ function WeeklyPlanScheduleModalContent({
                                                                             <div className="flex items-center gap-1 min-w-0">
                                                                                 <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-violet-500 shrink-0 cursor-grab transition-colors" title="드래그하여 다른 교시와 자리 교환" />
                                                                                 <span className="font-extrabold text-xs text-slate-900 group-hover:text-violet-900 transition-colors truncate">
-                                                                                    {getDisplaySubjectName(item.subject, item.matchedBookId, books, item.raw, item.topic)}
+                                                                                    {getDisplaySubjectName(item.subject, item.matchedBookId, availableBooks, item.raw, item.topic)}
                                                                                 </span>
                                                                             </div>
                                                                             {isBlank ? (
@@ -1672,7 +1672,7 @@ function WeeklyPlanScheduleModalContent({
                                                     <div className="min-w-0">
                                                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                             <h4 className="text-base font-bold text-slate-900 group-hover:text-violet-900 transition-colors">
-                                                                {getDisplaySubjectName(item.subject, item.matchedBookId, books, item.raw, item.topic)}
+                                                                {getDisplaySubjectName(item.subject, item.matchedBookId, availableBooks, item.raw, item.topic)}
                                                             </h4>
 
                                                             {isBlank ? (
