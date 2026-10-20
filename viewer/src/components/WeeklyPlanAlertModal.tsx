@@ -24,6 +24,82 @@ interface Props {
     onGoToBlank?: (subject?: string, topic?: string, period?: string) => void;
 }
 
+
+/**
+ * Safely resolves textbook page display string and start page number
+ * from WeeklyPlanItem fields, falling back to regex extraction from raw and topic text.
+ */
+export function resolvePageDisplay(item?: main.WeeklyPlanItem | null): { pageStr: string; startPage: number } {
+    if (!item) return { pageStr: '', startPage: 0 };
+
+    // 1. Direct pageStr if present
+    const pStr = (item.pageStr || '').trim();
+    if (pStr) {
+        const numMatch = pStr.match(/(\d{1,3})/);
+        const sp = item.startPage && item.startPage > 0 
+            ? item.startPage 
+            : (numMatch ? parseInt(numMatch[1], 10) : 0);
+        return { pageStr: pStr.endsWith('쪽') ? pStr : `${pStr}쪽`, startPage: sp };
+    }
+
+    // 2. Direct startPage / endPage
+    if (item.startPage && item.startPage > 0) {
+        if (item.endPage && item.endPage >= item.startPage) {
+            return { pageStr: `${item.startPage}~${item.endPage}쪽`, startPage: item.startPage };
+        }
+        return { pageStr: `${item.startPage}쪽`, startPage: item.startPage };
+    }
+
+    // 3. Fallback: extract from raw and topic text
+    const combined = `${item.raw || ''} ${item.topic || ''}`;
+    if (!combined.trim()) return { pageStr: '', startPage: 0 };
+
+    const clean = combined
+        .replace(/\d{2,4}\s*-\s*\d{3,4}\s*-\s*\d{4}/g, '')
+        .replace(/\(?\d{1,2}:\d{2}\s*[~∼\-]\s*\d{1,2}:\d{2}\)?/g, '');
+
+    // Pattern 1: e.g. 12~15쪽, 12-15쪽, p.12~15
+    const m1 = clean.match(/(?:(?:쪽|p\.?|page)\s*(\d{1,3})\s*(?:~|∼|-|–)\s*(\d{1,3})|(\d{1,3})\s*(?:~|∼|-|–)\s*(\d{1,3})\s*쪽)/i);
+    if (m1) {
+        const sp = parseInt(m1[1] || m1[3], 10);
+        const ep = parseInt(m1[2] || m1[4], 10);
+        if (sp <= 350 && ep <= 350 && sp <= ep) {
+            return { pageStr: `${sp}~${ep}쪽`, startPage: sp };
+        }
+    }
+
+    // Pattern 2: Parentheses e.g. (12~15) or (12-15)
+    const m2 = clean.match(/\(\s*(\d{1,3})\s*(?:~|∼|-|–)\s*(\d{1,3})\s*\)/);
+    if (m2) {
+        const sp = parseInt(m2[1], 10);
+        const ep = parseInt(m2[2], 10);
+        if (sp <= 350 && ep <= 350 && sp <= ep) {
+            return { pageStr: `${sp}~${ep}쪽`, startPage: sp };
+        }
+    }
+
+    // Pattern 3: Single page e.g. 12쪽, p.12
+    const m3 = clean.match(/(?:(\d{1,3})\s*쪽|p\.?\s*(\d{1,3}))/i);
+    if (m3) {
+        const val = parseInt(m3[1] || m3[2], 10);
+        if (val <= 350) {
+            return { pageStr: `${val}쪽`, startPage: val };
+        }
+    }
+
+    // Pattern 4: Standalone range e.g. 12~15 or 12-15
+    const m4 = clean.match(/(\d{1,3})\s*(?:~|∼|-|–)\s*(\d{1,3})/);
+    if (m4) {
+        const sp = parseInt(m4[1], 10);
+        const ep = parseInt(m4[2], 10);
+        if (sp <= 350 && ep <= 350 && sp <= ep) {
+            return { pageStr: `${sp}~${ep}쪽`, startPage: sp };
+        }
+    }
+
+    return { pageStr: '', startPage: 0 };
+}
+
 export default function WeeklyPlanAlertModal({
     isOpen,
     isRestTime = false,
@@ -99,8 +175,8 @@ export default function WeeklyPlanAlertModal({
                     periodName,
                     periodTime,
                     subject: getDisplaySubjectName(item?.subject || (isMorningPeriod ? storedMorning.subject : `${periodName} 수업`), item?.matchedBookId, [], undefined, item?.topic),
-                    pageStr: item?.pageStr,
-                    startPage: item?.startPage,
+                    pageStr: resolvePageDisplay(item).pageStr || item?.pageStr,
+                    startPage: resolvePageDisplay(item).startPage || item?.startPage,
                     endPage: item?.endPage,
                     topic: item?.topic || (isMorningPeriod ? storedMorning.topic : undefined),
                     matchedBookId: item?.matchedBookId,
@@ -123,14 +199,21 @@ export default function WeeklyPlanAlertModal({
     const upcoming = nextItem || (isRestTime ? item : null);
     const targetItem = isRestTime ? upcoming : item;
 
-    const isMorning = Boolean(isMorningPeriod || targetItem?.period === 0 || upcoming?.period === 0);
+    const upcomingPage = resolvePageDisplay(upcoming);
+    const currentPage = resolvePageDisplay(item);
+    const targetPageInfo = isRestTime ? upcomingPage : currentPage;
+
+    const isUpcomingMorning = Boolean(upcoming && upcoming.period === 0);
+    const isCurrentMorning = Boolean(item && (item.period === 0 || periodName.includes('아침')));
+    const isMorning = isRestTime ? isUpcomingMorning : isCurrentMorning;
+
     const effectiveTopic = targetItem?.topic || (isMorning ? storedMorning.topic : '') || '';
-    const rawSubject = targetItem?.subject || (isMorning ? storedMorning.subject : '') || (periodName.includes('아침') ? '아침활동' : '활동 수업');
+    const rawSubject = targetItem?.subject || (isMorning ? storedMorning.subject : '') || (isMorning ? '아침활동' : '활동 수업');
     const effectiveSubject = getDisplaySubjectName(rawSubject, targetItem?.matchedBookId, [], undefined, targetItem?.topic);
 
-    const targetPage = targetItem?.startPage || 1;
+    const targetPage = targetPageInfo.startPage || 1;
     const targetBookId = targetItem?.matchedBookId || targetItem?.subject;
-    const isBlank = isMorning || targetBookId === 'blank' || targetItem?.matchedBookId === 'blank' || targetItem?.period === 0;
+    const isBlank = isMorning || targetBookId === 'blank' || targetItem?.matchedBookId === 'blank';
 
     const upcomingTitle = nextPeriodName || (upcoming ? (upcoming.period === 0 ? '아침활동' : `${upcoming.period}교시`) : '다음 교시');
 
@@ -227,22 +310,22 @@ export default function WeeklyPlanAlertModal({
                                         <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-400 inline animate-pulse" />
                                     </div>
 
-                                    {!isBlank && (upcoming.pageStr || (upcoming.startPage && upcoming.startPage > 0)) ? (
+                                    {(upcomingPage.pageStr || upcomingPage.startPage > 0) ? (
                                         <div className="bg-gradient-to-b from-amber-500/20 to-amber-500/5 border-2 border-amber-400/60 rounded-2xl p-4 sm:p-6 my-1">
                                             <div className="text-xs sm:text-sm font-extrabold text-amber-300 tracking-widest uppercase mb-1">
                                                 쉬는 시간 동안 미리 펼쳐둘 교과서 쪽수
                                             </div>
                                             <div className="text-6xl sm:text-8xl md:text-9xl font-black text-amber-300 drop-shadow-[0_8px_25px_rgba(245,158,11,0.5)] tracking-tight leading-none py-1">
-                                                {upcoming.pageStr || `${upcoming.startPage}쪽`}
+                                                {upcomingPage.pageStr || `${upcomingPage.startPage}쪽`}
                                             </div>
-                                            {upcoming.matchedBookId && (
+                                            {upcoming.matchedBookId && upcoming.matchedBookId !== 'blank' && (
                                                 <div className="text-sm sm:text-lg text-slate-200 mt-2 font-bold flex items-center justify-center gap-2">
                                                     <BookOpen className="w-5 h-5 text-amber-400 shrink-0" />
                                                     <span>교과서: <strong className="text-white underline decoration-amber-400 decoration-2 underline-offset-4">{upcoming.matchedBookId}</strong></span>
                                                 </div>
                                             )}
                                         </div>
-                                    ) : isMorning ? (
+                                    ) : isUpcomingMorning ? (
                                         <div className="bg-gradient-to-b from-amber-500/25 to-amber-500/10 border-2 border-amber-400/80 rounded-2xl p-5 sm:p-7 my-2 shadow-lg">
                                             <div className="text-xs sm:text-sm font-extrabold text-amber-300 tracking-wider mb-2">
                                                 아침활동 내용
@@ -328,15 +411,15 @@ export default function WeeklyPlanAlertModal({
                                                 스스로 독서를 하거나 지정된 아침 자율활동을 진행하세요
                                             </div>
                                         </div>
-                                    ) : (item?.pageStr || (item?.startPage && item.startPage > 0)) ? (
+                                    ) : (currentPage.pageStr || currentPage.startPage > 0) ? (
                                         <>
                                             <div className="text-sm sm:text-base font-bold text-amber-300 tracking-widest uppercase mb-1">
                                                 교과서 쪽수
                                             </div>
                                             <div className="text-6xl sm:text-8xl md:text-9xl font-black text-amber-300 drop-shadow-[0_8px_25px_rgba(245,158,11,0.4)] tracking-tight leading-none py-2">
-                                                {item.pageStr || `${targetPage}쪽`}
+                                                {currentPage.pageStr || `${targetPage}쪽`}
                                             </div>
-                                            {item.matchedBookId && (
+                                            {item.matchedBookId && item.matchedBookId !== 'blank' && (
                                                 <div className="text-base sm:text-xl text-slate-200 mt-3 font-bold flex items-center justify-center gap-2">
                                                     <BookOpen className="w-5 h-5 text-amber-400 shrink-0" />
                                                     <span>교재: <strong className="text-white underline decoration-amber-400 decoration-2 underline-offset-4">{item.matchedBookId}</strong></span>

@@ -68,6 +68,11 @@ export function getCurrentClassStatus(
         if (pNum > 0) {
             const found = dayItems.find(it => it.period === pNum);
             if (found) return found;
+            // Fallback by index if period property doesn't match directly
+            const nonMorning = dayItems.filter(it => it.period !== 0);
+            if (nonMorning.length >= pNum) {
+                return nonMorning[pNum - 1];
+            }
         }
         return null;
     };

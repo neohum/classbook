@@ -1,11 +1,11 @@
 {
-  "version": "1.2.29",
+  "version": "1.2.30",
   "releaseDate": "2026-10-20",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.29/classbook-setup-v1.2.29.exe",
-  "installerName": "classbook-setup-v1.2.29.exe",
-  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.29.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261019%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261019T234153Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2210c417df3df9e50632c1da1db0a98288123c1b879f2d02b59049b66f0ad960",
-  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.29.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261019%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261019T234152Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=36d0a63441b3bf80d9a09b5e9d1f0dd27de93e6b1f1b612c67b774ce9a1bde33",
-  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.29.exe",
-  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.29.exe",
-  "notes": "주안 미리보기 시간표 화면 렌더링 참조 오류 수정 및 안정화 (v1.2.29)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.30/classbook-setup-v1.2.30.exe",
+  "installerName": "classbook-setup-v1.2.30.exe",
+  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.30.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261020%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261020T000159Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=105f120c60170be0c06df569f15f0c5e8cb57ace52a51e7f42df925cc7735a90",
+  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.30.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261020%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261020T000159Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a5bc851599c5225eba881161d0fab4592c336196da1616304bf05803daf8dac7",
+  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.30.exe",
+  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.30.exe",
+  "notes": "쉬는 시간 알림에 다음 수업 교과서 쪽수(범위/단일/원문 추출) 항상 표시되도록 개선 (v1.2.30)"
 }
