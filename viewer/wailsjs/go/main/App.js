@@ -170,3 +170,18 @@ export function LoadReviewQueue() {
   return Promise.resolve('[]');
 }
 
+export function SavePeriodMaterials(arg1, arg2) {
+  if (typeof window !== 'undefined' && window['go']?.['main']?.['App']?.['SavePeriodMaterials']) {
+    return window['go']['main']['App']['SavePeriodMaterials'](arg1, arg2);
+  }
+  return Promise.resolve();
+}
+
+export function LoadPeriodMaterials(arg1) {
+  if (typeof window !== 'undefined' && window['go']?.['main']?.['App']?.['LoadPeriodMaterials']) {
+    return window['go']['main']['App']['LoadPeriodMaterials'](arg1);
+  }
+  return Promise.resolve('{}');
+}
+
+

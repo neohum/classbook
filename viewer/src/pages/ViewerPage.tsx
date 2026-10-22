@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Home, Loader2, Maximize, Minimize, PenTool, X, Eraser, Trash2, Square, Clock, Play, Pause, Bell, BellOff, Octagon, Settings, CalendarDays, BookOpen, Minus, Calendar, Sparkles, BookCopy, Bookmark, Edit3, HelpCircle } from 'lucide-react';
 import { WindowFullscreen, WindowUnfullscreen, WindowIsFullscreen, Quit, WindowMinimise, EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
-import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatchFolder, UpdateBookOffset, GetTextbooks, LoadKnowledgeAnnotations, SaveKnowledgeAnnotations } from '../../wailsjs/go/main/App';
+import { StartDrag, GetAppVersion, CheckForUpdate, GetLatestWeeklyPlan, GetWatchFolder, UpdateBookOffset, GetTextbooks, LoadKnowledgeAnnotations, SaveKnowledgeAnnotations, LoadPeriodMaterials, SavePeriodMaterials } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 import WeeklyPlanAlertModal from '../components/WeeklyPlanAlertModal';
 import {
@@ -24,8 +24,10 @@ import KnowledgeOverlayLayer from '../components/KnowledgeOverlayLayer';
 import KnowledgePopoverCard from '../components/KnowledgePopoverCard';
 import ReviewQueueDrawer from '../components/ReviewQueueDrawer';
 import TeacherAnnotationModal from '../components/TeacherAnnotationModal';
+import FloatingLessonWidget from '../components/FloatingLessonWidget';
 import { useReviewQueue } from '../hooks/useReviewQueue';
 import type { CanvasRect, KnowledgeAnnotation, NormalizedBBox, ReviewQueueItem } from '../types/knowledgeOverlay';
+import type { LessonMaterialRef, PeriodMaterialBinding } from '../types/weeklyPlanMarket';
 import {
     deserializeKnowledgeBundle,
     getDefaultPageAnnotations,
@@ -34,6 +36,8 @@ import {
 import { resolveBookForSubject, getDisplaySubjectName } from '../utils/bookResolver';
 import { getCurrentClassStatus } from '../utils/scheduleHelper';
 import { getStoredMorningActivity } from '../utils/morningActivityHelper';
+import { getAllPeriodBindings, saveAllPeriodBindings, getPeriodSlotKey } from '../utils/marketRecommender';
+import { evaluateLessonScheduleTick, getLessonSchedulerConfig } from '../utils/lessonScheduler';
 
 let sharedAudioContext: AudioContext | null = null;
 const initAudioContext = () => {
@@ -732,17 +736,112 @@ export default function ViewerPage() {
         }
     };
 
+    const [periodBindings, setPeriodBindings] = useState<Record<string, PeriodMaterialBinding>>(() => getAllPeriodBindings());
+    const lessonTriggeredKeysRef = useRef<Set<string>>(new Set());
+
+    useEffect(() => {
+        const planPath = currentPlan?.filePath || '';
+        LoadPeriodMaterials(planPath)
+            .then(raw => {
+                if (raw && raw !== '{}') {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+                            const merged = { ...getAllPeriodBindings(), ...parsed };
+                            saveAllPeriodBindings(merged);
+                            setPeriodBindings(merged);
+                            return;
+                        }
+                    } catch (e) {}
+                }
+                setPeriodBindings(getAllPeriodBindings());
+            })
+            .catch(() => {
+                setPeriodBindings(getAllPeriodBindings());
+            });
+
+        const handlePeriodMaterialsUpdated = () => {
+            const latest = getAllPeriodBindings();
+            setPeriodBindings(latest);
+            SavePeriodMaterials(currentPlanRef.current?.filePath || '', JSON.stringify(latest)).catch(() => {});
+        };
+        window.addEventListener('classbook_period_materials_updated', handlePeriodMaterialsUpdated);
+        return () => window.removeEventListener('classbook_period_materials_updated', handlePeriodMaterialsUpdated);
+    }, [currentPlan?.filePath]);
+
+    const currentScheduleSnapshot = useMemo(() => {
+        const now = new Date();
+        const status = getCurrentClassStatus(now, schedules, currentPlan);
+        const targetItem = status.isRestTime ? status.nextItem : status.item;
+        const pNum = targetItem?.period !== undefined
+            ? targetItem.period
+            : parsePeriodFromName(status.isRestTime ? status.nextPeriodName : status.periodName, 1);
+        const slotKey = getPeriodSlotKey(status.targetDay, pNum >= 0 ? pNum : 1);
+        const slotBinding = periodBindings[slotKey];
+        const activeMaterials = slotBinding?.materials || [];
+        return {
+            currentDay: status.targetDay,
+            currentPeriod: pNum >= 0 ? pNum : 1,
+            currentPeriodName: status.isRestTime ? (status.nextPeriodName || `${pNum}교시`) : status.periodName,
+            subject: targetItem?.subject || slotBinding?.subject || '자율활동',
+            topic: targetItem?.topic || slotBinding?.topic || '',
+            activeMaterials
+        };
+    }, [schedules, currentPlan, periodBindings]);
+
+    const handleOpenFullscreenLesson = async (material?: LessonMaterialRef) => {
+        try {
+            WindowFullscreen();
+            setIsFullscreen(true);
+        } catch (e) {}
+
+        if (material) {
+            showToast(`[${material.title}] 전체화면 수업 모드로 전환되었습니다.`);
+            if (material.urlOrPath.startsWith('http://') || material.urlOrPath.startsWith('https://')) {
+                window.open(material.urlOrPath, '_blank', 'noopener,noreferrer');
+                return;
+            }
+            const pStr = currentScheduleSnapshot.currentPeriodName || `${currentScheduleSnapshot.currentPeriod}교시`;
+            navigate(
+                `/viewer/blank?subject=${encodeURIComponent(material.subject || currentScheduleSnapshot.subject)}&topic=${encodeURIComponent(`${material.title} - ${material.description || currentScheduleSnapshot.topic}`)}&period=${encodeURIComponent(pStr)}`
+            );
+            return;
+        }
+
+        handleStartTodayClass();
+    };
+
     useEffect(() => {
         const checkSchedule = () => {
             const now = new Date();
             const h = now.getHours().toString().padStart(2, '0');
             const m = now.getMinutes().toString().padStart(2, '0');
             const currentTimeStr = `${h}:${m}`;
+            const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+            const targetDay = (dayOfWeek === '일' || dayOfWeek === '토') ? '월' : dayOfWeek;
+
+            if (isScheduleEnabledRef.current) {
+                const schedConfig = getLessonSchedulerConfig();
+                const tick = evaluateLessonScheduleTick(
+                    now,
+                    schedules,
+                    getAllPeriodBindings(),
+                    targetDay,
+                    lessonTriggeredKeysRef.current,
+                    schedConfig
+                );
+                if (tick.triggerType === 'PRE_START' && tick.alertMessage && schedConfig.autoAlert) {
+                    showToast(tick.alertMessage);
+                } else if (tick.triggerType === 'PERIOD_START' && tick.shouldEnterFullscreen) {
+                    try {
+                        WindowFullscreen();
+                        setIsFullscreen(true);
+                    } catch (e) {}
+                }
+            }
 
             if (lastTriggeredMinuteRef.current === currentTimeStr) return;
             if (!isScheduleEnabledRef.current) return;
-
-            const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
 
             for (let i = 0; i < schedules.length; i++) {
                 const item = schedules[i];
@@ -2371,6 +2470,22 @@ export default function ViewerPage() {
                     } else {
                         navigate(`/viewer/blank?subject=${encodeURIComponent(subject || '')}&topic=${encodeURIComponent(topic || '')}&period=${encodeURIComponent(periodStr)}`);
                     }
+                }}
+            />
+
+            {/* Always-On Floating Lesson & Self-Check Widget */}
+            <FloatingLessonWidget
+                currentDay={currentScheduleSnapshot.currentDay}
+                currentPeriod={currentScheduleSnapshot.currentPeriod}
+                currentPeriodName={currentScheduleSnapshot.currentPeriodName}
+                subject={currentScheduleSnapshot.subject}
+                topic={currentScheduleSnapshot.topic}
+                activeMaterials={currentScheduleSnapshot.activeMaterials}
+                onOpenFullscreenLesson={handleOpenFullscreenLesson}
+                onBindingsChanged={() => {
+                    const latest = getAllPeriodBindings();
+                    setPeriodBindings(latest);
+                    SavePeriodMaterials(currentPlan?.filePath || '', JSON.stringify(latest)).catch(() => {});
                 }}
             />
 

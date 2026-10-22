@@ -1873,3 +1873,73 @@ func (a *App) LoadReviewQueue() (string, error) {
 	return string(data), nil
 }
 
+// ==========================================
+// Weekly Plan Period Material Bindings
+// ==========================================
+
+// SavePeriodMaterials persists period learning material bindings to SQLite and fallback JSON
+func (a *App) SavePeriodMaterials(filePath string, bindingsJSON string) error {
+	trimmed := strings.TrimSpace(bindingsJSON)
+	if trimmed == "" {
+		trimmed = "{}"
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
+		return fmt.Errorf("invalid period materials JSON: %w", err)
+	}
+
+	targetPath := strings.TrimSpace(filePath)
+	if targetPath == "" && a.currentPlan != nil && a.currentPlan.FilePath != "" {
+		targetPath = a.currentPlan.FilePath
+	}
+
+	if a.planDB == nil {
+		var errDb error
+		a.planDB, errDb = initWeeklyPlanDB()
+		if errDb != nil {
+			logToFile("SavePeriodMaterials: initWeeklyPlanDB error: %v", errDb)
+		}
+	}
+
+	if a.planDB != nil && targetPath != "" {
+		if err := a.planDB.SavePeriodMaterialBindings(targetPath, trimmed); err != nil {
+			logToFile("SavePeriodMaterials: SQLite save error: %v", err)
+		}
+	}
+
+	// Always maintain fallback JSON in appDir for fast/default recovery
+	appDir := getAppDir()
+	fallbackFile := filepath.Join(appDir, "period_materials.json")
+	return os.WriteFile(fallbackFile, []byte(trimmed), 0644)
+}
+
+// LoadPeriodMaterials loads period learning material bindings from SQLite or fallback JSON
+func (a *App) LoadPeriodMaterials(filePath string) (string, error) {
+	targetPath := strings.TrimSpace(filePath)
+	if targetPath == "" && a.currentPlan != nil && a.currentPlan.FilePath != "" {
+		targetPath = a.currentPlan.FilePath
+	}
+
+	if a.planDB == nil {
+		a.planDB, _ = initWeeklyPlanDB()
+	}
+
+	if a.planDB != nil && targetPath != "" {
+		if dbJSON, err := a.planDB.GetPeriodMaterialBindings(targetPath); err == nil && dbJSON != "" && dbJSON != "{}" {
+			return dbJSON, nil
+		}
+	}
+
+	appDir := getAppDir()
+	fallbackFile := filepath.Join(appDir, "period_materials.json")
+	data, err := os.ReadFile(fallbackFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "{}", nil
+		}
+		return "{}", err
+	}
+	return string(data), nil
+}
+
+

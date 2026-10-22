@@ -16,7 +16,9 @@ import {
     SwapWeeklyPlanSlots,
     GetTextbooks,
     GetWeeklyPlanList,
-    GetWeeklyPlanByPath
+    GetWeeklyPlanByPath,
+    SavePeriodMaterials,
+    LoadPeriodMaterials
 } from '../../wailsjs/go/main/App';
 import HwpHtmlViewerModal from './HwpHtmlViewerModal';
 import ErrorBoundary from './ErrorBoundary';
@@ -24,6 +26,15 @@ import { resolveBookForSubject, getDisplaySubjectName } from '../utils/bookResol
 import { getStoredSchedule, isLunchSchedule, isBreakSchedule, parsePeriodFromName, type ScheduleItem } from './ScheduleConfigModal';
 import { getCurrentClassStatus } from '../utils/scheduleHelper';
 import { getStoredMorningActivity, saveStoredMorningActivity } from '../utils/morningActivityHelper';
+import {
+    recommendMarketMaterials,
+    bindMaterialToPeriod,
+    unbindMaterialFromPeriod,
+    getAllPeriodBindings,
+    saveAllPeriodBindings,
+    getPeriodSlotKey
+} from '../utils/marketRecommender';
+import type { LessonMaterialRef, PeriodMaterialBinding } from '../types/weeklyPlanMarket';
 
 interface Props {
     isOpen: boolean;
@@ -123,10 +134,49 @@ function WeeklyPlanScheduleModalContent({
     const [dragSource, setDragSource] = useState<{ day: string; period: number; subject?: string } | null>(null);
     const [dragOverTarget, setDragOverTarget] = useState<{ day: string; period: number } | null>(null);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [periodBindings, setPeriodBindings] = useState<Record<string, PeriodMaterialBinding>>(() => getAllPeriodBindings());
 
     const showToast = (msg: string) => {
         setToastMessage(msg);
         setTimeout(() => setToastMessage(null), 3500);
+    };
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const planPath = effectivePlan?.filePath || '';
+        LoadPeriodMaterials(planPath)
+            .then(raw => {
+                if (raw && raw !== '{}') {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+                            const merged = { ...getAllPeriodBindings(), ...parsed };
+                            saveAllPeriodBindings(merged);
+                            setPeriodBindings(merged);
+                            return;
+                        }
+                    } catch (e) {}
+                }
+                setPeriodBindings(getAllPeriodBindings());
+            })
+            .catch(() => {
+                setPeriodBindings(getAllPeriodBindings());
+            });
+    }, [isOpen, effectivePlan?.filePath]);
+
+    const handleBindMarketMaterial = (day: string, period: number, subject: string, topic: string, mat: LessonMaterialRef) => {
+        bindMaterialToPeriod(day, period, subject, topic, mat);
+        const updated = getAllPeriodBindings();
+        setPeriodBindings(updated);
+        SavePeriodMaterials(effectivePlan?.filePath || '', JSON.stringify(updated)).catch(() => {});
+        showToast(`[${day}요일 ${period === 0 ? '아침활동' : `${period}교시`}] '${mat.title}' 학습자료가 연동되었습니다.`);
+    };
+
+    const handleUnbindMarketMaterial = (day: string, period: number, materialId: string) => {
+        unbindMaterialFromPeriod(day, period, materialId);
+        const updated = getAllPeriodBindings();
+        setPeriodBindings(updated);
+        SavePeriodMaterials(effectivePlan?.filePath || '', JSON.stringify(updated)).catch(() => {});
     };
 
     const handleSwapSlots = async (srcDay: string, srcPeriod: number, dstDay: string, dstPeriod: number) => {
@@ -1253,6 +1303,98 @@ function WeeklyPlanScheduleModalContent({
                                     </div>
                                 )}
 
+                                {/* 올마켓 추천 학습자료 & 교시 연동 섹션 */}
+                                {(() => {
+                                    const editSlotKey = getPeriodSlotKey(editingItem.day, editingItem.period);
+                                    const boundForSlot = periodBindings[editSlotKey]?.materials || [];
+                                    const boundIds = new Set(boundForSlot.map(m => m.id));
+                                    const marketRecs = recommendMarketMaterials(
+                                        editingItem.subject || '공통',
+                                        editingItem.topic || '',
+                                        undefined,
+                                        4
+                                    );
+                                    return (
+                                        <div className="mb-4 rounded-2xl border border-indigo-200 bg-white p-3.5 space-y-2.5">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-1.5">
+                                                    <i className="fi fi-rr-sparkles text-indigo-600 text-xs leading-none" />
+                                                    <span className="text-xs font-extrabold text-slate-800">
+                                                        올마켓 추천 학습자료
+                                                    </span>
+                                                </div>
+                                                <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                                                    연동됨 {boundForSlot.length}개
+                                                </span>
+                                            </div>
+
+                                            {boundForSlot.length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {boundForSlot.map(mat => (
+                                                        <span
+                                                            key={mat.id}
+                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-900"
+                                                        >
+                                                            <i className="fi fi-rr-check-circle text-emerald-600 text-[11px] leading-none" />
+                                                            <span className="break-keep">{mat.title}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleUnbindMarketMaterial(editingItem.day, editingItem.period, mat.id)}
+                                                                className="inline-flex h-4 w-4 items-center justify-center rounded text-emerald-700 hover:bg-emerald-200 leading-none"
+                                                                title="연동 해제"
+                                                            >
+                                                                <i className="fi fi-rr-cross-small text-[10px] leading-none" />
+                                                            </button>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {marketRecs.map(rec => {
+                                                    const isAlreadyBound = boundIds.has(rec.id);
+                                                    return (
+                                                        <div
+                                                            key={rec.id}
+                                                            className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2"
+                                                        >
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-xs font-bold text-slate-800 truncate break-keep">
+                                                                    {rec.title}
+                                                                </p>
+                                                                <p className="text-[11px] text-slate-500 truncate break-keep">
+                                                                    {rec.subject} · {rec.description}
+                                                                </p>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                disabled={isAlreadyBound}
+                                                                onClick={() =>
+                                                                    handleBindMarketMaterial(
+                                                                        editingItem.day,
+                                                                        editingItem.period,
+                                                                        editingItem.subject,
+                                                                        editingItem.topic,
+                                                                        rec
+                                                                    )
+                                                                }
+                                                                className={`inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-extrabold border leading-none shrink-0 transition-colors ${
+                                                                    isAlreadyBound
+                                                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 cursor-default'
+                                                                        : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700 cursor-pointer'
+                                                                }`}
+                                                            >
+                                                                <i className={`fi ${isAlreadyBound ? 'fi-rr-check' : 'fi-rr-plus-small'} text-[11px] leading-none`} />
+                                                                <span>{isAlreadyBound ? '등록됨' : '교시 등록'}</span>
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
                                 {/* Action Buttons */}
                                 <div className="flex items-center justify-end gap-2">
                                     <button
@@ -1508,15 +1650,23 @@ function WeeklyPlanScheduleModalContent({
                                                                                     {getDisplaySubjectName(item.subject, item.matchedBookId, availableBooks, item.raw, item.topic)}
                                                                                 </span>
                                                                             </div>
-                                                                            {isBlank ? (
-                                                                                <span className="text-[10px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded">
-                                                                                    빈화면
-                                                                                </span>
-                                                                            ) : item.pageStr ? (
-                                                                                <span className="text-[10px] font-bold px-1.5 py-0.2 bg-violet-100 text-violet-700 rounded font-mono">
-                                                                                    {item.pageStr}
-                                                                                </span>
-                                                                            ) : null}
+                                                                            <div className="flex items-center gap-1 flex-wrap">
+                                                                                {isBlank ? (
+                                                                                    <span className="text-[10px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded">
+                                                                                        빈화면
+                                                                                    </span>
+                                                                                ) : item.pageStr ? (
+                                                                                    <span className="text-[10px] font-bold px-1.5 py-0.2 bg-violet-100 text-violet-700 rounded font-mono">
+                                                                                        {item.pageStr}
+                                                                                    </span>
+                                                                                ) : null}
+                                                                                {(periodBindings[getPeriodSlotKey(day, period)]?.materials?.length || 0) > 0 && (
+                                                                                    <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 border border-indigo-200 rounded leading-none">
+                                                                                        <i className="fi fi-rr-book-alt text-[9px] leading-none" />
+                                                                                        <span>자료 {periodBindings[getPeriodSlotKey(day, period)]?.materials?.length}</span>
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
 
                                                                         {/* Topic */}
@@ -1693,6 +1843,12 @@ function WeeklyPlanScheduleModalContent({
                                                                         </span>
                                                                     )}
                                                                 </div>
+                                                            )}
+                                                            {(periodBindings[getPeriodSlotKey(selectedDay, period)]?.materials?.length || 0) > 0 && (
+                                                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200 leading-none">
+                                                                    <i className="fi fi-rr-book-alt text-[10px] leading-none" />
+                                                                    <span>올마켓 자료 {periodBindings[getPeriodSlotKey(selectedDay, period)]?.materials?.length}개 연동됨</span>
+                                                                </span>
                                                             )}
                                                         </div>
 
