@@ -150,3 +150,41 @@ func TestWeeklyPlanDBSaveAndSwap(t *testing.T) {
 		t.Errorf("expected reloaded plan to have IsCustomized=true")
 	}
 }
+
+func TestPeriodMaterials(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "classbook_period_materials_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test_period_materials.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	planDB := &WeeklyPlanDB{db: db, dbPath: dbPath}
+
+	sampleFilePath := "D:\\test\\weekly_plan_2026.hwpx"
+	sampleJSON := `{"월_1":{"day":"월","period":1,"subject":"국어","topic":"글자의 짜임","materials":[{"id":"mkt-kor-dictation-01","title":"AI 받아쓰기 활동지","type":"market_artifact","subject":"국어","keywords":["받아쓰기"],"urlOrPath":"market://all-market/artifacts/kor-dictation-01"}],"updatedAt":"2026-10-22T09:00:00Z"}}`
+
+	if err := planDB.SavePeriodMaterialBindings(sampleFilePath, sampleJSON); err != nil {
+		t.Fatalf("SavePeriodMaterialBindings failed: %v", err)
+	}
+
+	loadedJSON, err := planDB.GetPeriodMaterialBindings(sampleFilePath)
+	if err != nil {
+		t.Fatalf("GetPeriodMaterialBindings failed: %v", err)
+	}
+	if loadedJSON != sampleJSON {
+		t.Errorf("expected loadedJSON to match sampleJSON, got: %s", loadedJSON)
+	}
+
+	// Verify invalid JSON is rejected
+	if err := planDB.SavePeriodMaterialBindings(sampleFilePath, "{broken_json"); err == nil {
+		t.Errorf("expected invalid JSON to return error")
+	}
+}
+

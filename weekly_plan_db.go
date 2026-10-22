@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -76,6 +77,14 @@ func initWeeklyPlanDB() (*WeeklyPlanDB, error) {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_plan_items_slot ON weekly_plan_items(file_path, day, period);
+
+	CREATE TABLE IF NOT EXISTS period_material_bindings (
+		file_path TEXT,
+		slot_key TEXT,
+		bindings_json TEXT,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (file_path, slot_key)
+	);
 	`
 
 	if _, err := db.Exec(createTablesSQL); err != nil {
@@ -362,3 +371,133 @@ func (p *WeeklyPlanDB) SwapSlots(plan *WeeklyPlanResult, dayA string, periodA in
 
 	return plan, nil
 }
+
+// SavePeriodMaterialBindings persists period-to-material bindings JSON for a given weekly plan file path
+func (p *WeeklyPlanDB) SavePeriodMaterialBindings(filePath string, bindingsJSON string) error {
+	if p == nil || p.db == nil {
+		return fmt.Errorf("database is nil")
+	}
+	trimmedJSON := strings.TrimSpace(bindingsJSON)
+	if trimmedJSON == "" {
+		trimmedJSON = "{}"
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(trimmedJSON), &parsed); err != nil {
+		return fmt.Errorf("invalid bindings JSON: %w", err)
+	}
+
+	fp := strings.TrimSpace(filePath)
+	if fp == "" {
+		fp = "__default__"
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	_, _ = p.db.Exec(`
+	CREATE TABLE IF NOT EXISTS period_material_bindings (
+		file_path TEXT,
+		slot_key TEXT,
+		bindings_json TEXT,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (file_path, slot_key)
+	);
+	`)
+
+	tx, err := p.db.Begin()
+	if err != nil {
+		return fmt.Errorf("transaction begin failed: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM period_material_bindings WHERE file_path = ?`, fp); err != nil {
+		return fmt.Errorf("failed to clear existing period_material_bindings: %w", err)
+	}
+
+	upsertSQL := `
+	INSERT INTO period_material_bindings (file_path, slot_key, bindings_json, updated_at)
+	VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+	ON CONFLICT(file_path, slot_key) DO UPDATE SET
+		bindings_json = excluded.bindings_json,
+		updated_at = CURRENT_TIMESTAMP;
+	`
+
+	// Save the full bundle under __bundle__ as well as individual slot keys for queryability
+	if _, err := tx.Exec(upsertSQL, fp, "__bundle__", trimmedJSON); err != nil {
+		return fmt.Errorf("failed to save period_material_bindings bundle: %w", err)
+	}
+
+	for slotKey, slotVal := range parsed {
+		if slotKey == "__bundle__" {
+			continue
+		}
+		slotBytes, errMarshal := json.Marshal(slotVal)
+		if errMarshal == nil {
+			_, _ = tx.Exec(upsertSQL, fp, slotKey, string(slotBytes))
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit period_material_bindings: %w", err)
+	}
+	return nil
+}
+
+// GetPeriodMaterialBindings retrieves the persisted period-to-material bindings JSON for a given weekly plan file path
+func (p *WeeklyPlanDB) GetPeriodMaterialBindings(filePath string) (string, error) {
+	if p == nil || p.db == nil {
+		return "{}", fmt.Errorf("database is nil")
+	}
+
+	fp := strings.TrimSpace(filePath)
+	if fp == "" {
+		fp = "__default__"
+	}
+
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	var bundleJSON string
+	err := p.db.QueryRow(`
+		SELECT bindings_json
+		FROM period_material_bindings
+		WHERE file_path = ? AND slot_key = '__bundle__'
+	`, fp).Scan(&bundleJSON)
+	if err == nil && strings.TrimSpace(bundleJSON) != "" {
+		return bundleJSON, nil
+	}
+	if err != nil && err != sql.ErrNoRows {
+		if strings.Contains(err.Error(), "no such table") {
+			return "{}", nil
+		}
+		return "{}", err
+	}
+
+	// Reconstruct from individual slot rows if __bundle__ row is absent
+	rows, errRows := p.db.Query(`
+		SELECT slot_key, bindings_json
+		FROM period_material_bindings
+		WHERE file_path = ? AND slot_key != '__bundle__'
+	`, fp)
+	if errRows != nil {
+		return "{}", nil
+	}
+	defer rows.Close()
+
+	reconstructed := make(map[string]json.RawMessage)
+	for rows.Next() {
+		var sKey, sJSON string
+		if errScan := rows.Scan(&sKey, &sJSON); errScan == nil {
+			reconstructed[sKey] = json.RawMessage(sJSON)
+		}
+	}
+	if len(reconstructed) == 0 {
+		return "{}", nil
+	}
+	outBytes, errOut := json.Marshal(reconstructed)
+	if errOut != nil {
+		return "{}", errOut
+	}
+	return string(outBytes), nil
+}
+

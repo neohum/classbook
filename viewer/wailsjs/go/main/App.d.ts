@@ -80,3 +80,7 @@ export function SaveReviewQueue(arg1:string):Promise<void>;
 
 export function LoadReviewQueue():Promise<string>;
 
+export function SavePeriodMaterials(arg1:string,arg2:string):Promise<void>;
+
+export function LoadPeriodMaterials(arg1:string):Promise<string>;
+
