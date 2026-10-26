@@ -1,11 +1,11 @@
 {
-  "version": "1.2.31",
+  "version": "1.2.32",
   "releaseDate": "2026-10-26",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.31/classbook-setup-v1.2.31.exe",
-  "installerName": "classbook-setup-v1.2.31.exe",
-  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.31.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261026%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261026T002446Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=26ec52e00865620b35d5eb3f61c5be99937978278d8481da40de3870ec527f5a",
-  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.31.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261026%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261026T002445Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5b353969bfec4ab7d4c684aefd31e143515705a934598447544763369f61dc06",
-  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.31.exe",
-  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.31.exe",
-  "notes": "국어 교과서 권(1-2 가/나) 구분 및 쪽수 일치 개선 (v1.2.31)"
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.32/classbook-setup-v1.2.32.exe",
+  "installerName": "classbook-setup-v1.2.32.exe",
+  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.32.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261026%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261026T003829Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8c6357df45e7098a5f39f0f42b2a693ac2073c2ca16ade6643fc091e1b3c7242",
+  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.32.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261026%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261026T003828Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d890d31d8314f19f8d5d55e4aac2cb4b4c93344f9355d1c2a97ebea72721dd95",
+  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.32.exe",
+  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.32.exe",
+  "notes": "국어 1-2 가/나 권 인쇄 쪽수 범위 기반 자동 선택 및 페이지 검사 강화, 불필요 툴바/플로팅 버튼 삭제 (v1.2.32)"
 }

@@ -224,7 +224,7 @@ export default function ViewerPage() {
     const [pageOffset, setPageOffset] = useState<number>(0);
 
     // Knowledge Overlay & Review Queue States
-    const [isKnowledgeOverlayEnabled, setIsKnowledgeOverlayEnabled] = useState<boolean>(true);
+    const [isKnowledgeOverlayEnabled, setIsKnowledgeOverlayEnabled] = useState<boolean>(false);
     const [customAnnotations, setCustomAnnotations] = useState<KnowledgeAnnotation[]>([]);
     const [selectedAnnotation, setSelectedAnnotation] = useState<KnowledgeAnnotation | null>(null);
     const [selectedAnchorRect, setSelectedAnchorRect] = useState<CanvasRect | null>(null);
@@ -1803,69 +1803,8 @@ export default function ViewerPage() {
                     )}
                 </div>
 
-                {/* Top Right Toolbar: Knowledge Overlay Toggle, Review Queue Drawer, Teacher Annotation Editor */}
-                {bookId !== 'blank' ? (
-                    <div className="flex items-center justify-end gap-2">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const next = !isKnowledgeOverlayEnabled;
-                                setIsKnowledgeOverlayEnabled(next);
-                                if (!next) setSelectedAnnotation(null);
-                            }}
-                            data-testid="toolbar-toggle-knowledge-overlay"
-                            className={`px-3 py-1.5 rounded-full border text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                                isKnowledgeOverlayEnabled
-                                    ? 'bg-violet-600/90 border-violet-400 text-white shadow-md shadow-violet-600/30'
-                                    : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-white'
-                            }`}
-                            title="지식 도움말 켜기/끄기"
-                        >
-                            <HelpCircle className="w-3.5 h-3.5 shrink-0" />
-                            <span className="hidden sm:inline">
-                                {isKnowledgeOverlayEnabled ? '지식 도움말 켜짐' : '지식 도움말 꺼짐'}
-                            </span>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => setIsReviewDrawerOpen((prev) => !prev)}
-                            data-testid="toolbar-open-review-queue"
-                            className="px-3 py-1.5 rounded-full border bg-slate-800/90 hover:bg-slate-700 border-slate-700 text-slate-200 text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                            title="다음에 보기 복습 큐 열기"
-                        >
-                            <Bookmark className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <span className="hidden sm:inline">복습 큐</span>
-                            {reviewPendingCount > 0 && (
-                                <span
-                                    data-testid="toolbar-review-count-badge"
-                                    className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black text-[10px]"
-                                >
-                                    {reviewPendingCount}
-                                </span>
-                            )}
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => setIsTeacherEditMode((prev) => !prev)}
-                            data-testid="toolbar-toggle-teacher-mode"
-                            className={`px-3 py-1.5 rounded-full border text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                                isTeacherEditMode
-                                    ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md'
-                                    : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:text-white'
-                            }`}
-                            title="교사용 지식 노트 편집 모드"
-                        >
-                            <Edit3 className="w-3.5 h-3.5 shrink-0" />
-                            <span className="hidden md:inline">
-                                {isTeacherEditMode ? '교사 편집중' : '노트 편집'}
-                            </span>
-                        </button>
-                    </div>
-                ) : (
-                    <div className="min-w-[120px]" />
-                )}
+                {/* Top Right Toolbar (Cleaned) */}
+                <div className="min-w-[120px]" />
             </header>
 
             <main
@@ -2494,21 +2433,6 @@ export default function ViewerPage() {
                 }}
             />
 
-            {/* Always-On Floating Lesson & Self-Check Widget */}
-            <FloatingLessonWidget
-                currentDay={currentScheduleSnapshot.currentDay}
-                currentPeriod={currentScheduleSnapshot.currentPeriod}
-                currentPeriodName={currentScheduleSnapshot.currentPeriodName}
-                subject={currentScheduleSnapshot.subject}
-                topic={currentScheduleSnapshot.topic}
-                activeMaterials={currentScheduleSnapshot.activeMaterials}
-                onOpenFullscreenLesson={handleOpenFullscreenLesson}
-                onBindingsChanged={() => {
-                    const latest = getAllPeriodBindings();
-                    setPeriodBindings(latest);
-                    SavePeriodMaterials(currentPlan?.filePath || '', JSON.stringify(latest)).catch(() => {});
-                }}
-            />
 
             {/* Toast Notification */}
             {toastMessage && (

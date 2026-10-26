@@ -8,6 +8,14 @@ export interface OffsetDetectResult {
     confidenceMsg: string;
 }
 
+export interface BookOffsetInspectionResult {
+    offset: number;
+    startPrintedPage: number;
+    endPrintedPage: number;
+    confidenceMsg: string;
+    sampleCount: number;
+}
+
 /**
  * Checks text content from PDF.js getTextContent() for page numbers
  */
@@ -19,13 +27,12 @@ export async function detectPageNumberFromText(page: any, viewport: any): Promis
         }
 
         const height = viewport.height;
-        // Search items in the bottom 12% or top 10%
+        // Search items in the bottom 15% or top 10%
         for (const item of textContent.items) {
             if (!('str' in item)) continue;
             const str = item.str.trim();
             if (/^\d{1,3}$/.test(str)) {
                 const y = item.transform[5]; // y coordinate
-                // Bottom of page is usually y < height * 0.15 in PDF coordinates or near top
                 if (y < height * 0.15 || y > height * 0.88) {
                     const num = parseInt(str, 10);
                     if (num > 0 && num < 500) {
@@ -104,4 +111,61 @@ export async function detectPageNumberFromCanvas(canvas: HTMLCanvasElement, isEv
         console.warn("OCR recognition error:", err);
     }
     return null;
+}
+
+/**
+ * Calculates the consensus offset and printed page range from collected physical vs printed page pairs.
+ */
+export function computeConsensusOffset(
+    samples: { physicalPage: number; printedPage: number }[],
+    totalPhysicalPages: number,
+    bookTitle: string = ''
+): BookOffsetInspectionResult {
+    if (!samples || samples.length === 0) {
+        // Fallback heuristic based on title
+        if (bookTitle.includes('나') && !bookTitle.includes('가')) {
+            return {
+                offset: -140,
+                startPrintedPage: 141,
+                endPrintedPage: 140 + totalPhysicalPages,
+                confidenceMsg: '권(나) 휴리스틱 적용 (기본 오프셋: -140)',
+                sampleCount: 0
+            };
+        }
+        return {
+            offset: 0,
+            startPrintedPage: 1,
+            endPrintedPage: totalPhysicalPages,
+            confidenceMsg: '기본 1:1 매칭 적용 (오프셋: 0)',
+            sampleCount: 0
+        };
+    }
+
+    // Count occurrences of each offset
+    const offsetCounts: Record<number, number> = {};
+    for (const s of samples) {
+        const diff = s.physicalPage - s.printedPage;
+        offsetCounts[diff] = (offsetCounts[diff] || 0) + 1;
+    }
+
+    let bestOffset = 0;
+    let maxCount = -1;
+    for (const [offStr, count] of Object.entries(offsetCounts)) {
+        const off = parseInt(offStr, 10);
+        if (count > maxCount) {
+            maxCount = count;
+            bestOffset = off;
+        }
+    }
+
+    const startPrintedPage = bestOffset < 0 ? (1 - bestOffset) : 1;
+    const endPrintedPage = totalPhysicalPages - bestOffset;
+
+    return {
+        offset: bestOffset,
+        startPrintedPage,
+        endPrintedPage,
+        confidenceMsg: `${maxCount}개 페이지에서 오프셋(${bestOffset}) 검증 완료 (${startPrintedPage}~${endPrintedPage}쪽)`,
+        sampleCount: samples.length
+    };
 }

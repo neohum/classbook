@@ -174,9 +174,9 @@ def detect_semester_preference(text):
         return '-1'
     return None
 
-def select_best_book_match(candidates, vol_pref=None, sem_pref=None, is_activity=False):
+def select_best_book_match(candidates, vol_pref=None, sem_pref=None, is_activity=False, start_page=None):
     """
-    Among candidate book IDs, choose the best matching one considering volume ('가'/'나') and semester ('1-1'/'1-2').
+    Among candidate book IDs, choose the best matching one considering page range, volume ('가'/'나') and semester ('1-1'/'1-2').
     """
     if not candidates:
         return ""
@@ -197,9 +197,18 @@ def select_best_book_match(candidates, vol_pref=None, sem_pref=None, is_activity
     if len(filtered) == 1:
         return filtered[0]
 
-    # Filter by semester if specified
-    if sem_pref:
-        sem_matches = [c for c in filtered if sem_pref in c]
+    # Explicit page heuristic: page >= 140 indicates '나' volume, page < 140 indicates '가' volume
+    if start_page and start_page >= 140:
+        vol_pref = '나'
+    elif start_page and 0 < start_page < 140 and not vol_pref:
+        vol_pref = '가'
+
+    # Filter by semester if specified, or current date semester fallback (Aug-Jan: 2nd sem, Feb-Jul: 1st sem)
+    now_m = datetime.datetime.now().month
+    current_sem = '-2' if (now_m >= 8 or now_m <= 1) else '-1'
+    effective_sem = sem_pref or current_sem
+    if effective_sem:
+        sem_matches = [c for c in filtered if effective_sem in c or (effective_sem == '-2' and '2학기' in c) or (effective_sem == '-1' and '1학기' in c)]
         if sem_matches:
             filtered = sem_matches
 
@@ -210,31 +219,19 @@ def select_best_book_match(candidates, vol_pref=None, sem_pref=None, is_activity
     if vol_pref == '나':
         na_matches = [c for c in filtered if '나' in c and '가' not in c]
         if na_matches:
-            return na_matches[0]
-        na_ends = [c for c in filtered if re.sub(r'\.pdf$', '', c, flags=re.I).endswith('나')]
-        if na_ends:
-            return na_ends[0]
+            filtered = na_matches
+        else:
+            na_ends = [c for c in filtered if re.sub(r'\.pdf$', '', c, flags=re.I).endswith('나')]
+            if na_ends:
+                filtered = na_ends
     elif vol_pref == '가':
         ga_matches = [c for c in filtered if '가' in c and '나' not in c]
         if ga_matches:
-            return ga_matches[0]
-        ga_ends = [c for c in filtered if re.sub(r'\.pdf$', '', c, flags=re.I).endswith('가')]
-        if ga_ends:
-            return ga_ends[0]
-
-    # Date-based fallback: late in semester -> '나'
-    now_m = datetime.datetime.now().month
-    if now_m >= 9 or now_m <= 1:
-        second_sem = [c for c in filtered if '-2' in c or '2학기' in c]
-        if second_sem:
-            if now_m >= 11 or now_m <= 1:
-                na_sub = [c for c in second_sem if '나' in c]
-                if na_sub:
-                    return na_sub[0]
-            ga_sub = [c for c in second_sem if '가' in c]
-            if ga_sub:
-                return ga_sub[0]
-            return second_sem[0]
+            filtered = ga_matches
+        else:
+            ga_ends = [c for c in filtered if re.sub(r'\.pdf$', '', c, flags=re.I).endswith('가')]
+            if ga_ends:
+                filtered = ga_ends
 
     return filtered[0]
 
@@ -276,7 +273,7 @@ def match_book_id(subject, available_books, unit="", raw_text="", topic="", star
                     matched_candidates.append(bid)
                     break
         if matched_candidates:
-            return select_best_book_match(matched_candidates, vol_pref, sem_pref, is_activity)
+            return select_best_book_match(matched_candidates, vol_pref, sem_pref, is_activity, start_page=start_page)
 
         if is_integrated:
             # Check for known integrated curriculum themes: '하루', '학교', '사람들', '탐험', '봄', '여름', '가을', '겨울', '세상'
@@ -302,14 +299,14 @@ def match_book_id(subject, available_books, unit="", raw_text="", topic="", star
         if subject == bid or bid.startswith(subject) or (subject and subject in bid):
             primary_matches.append(bid)
     if primary_matches:
-        return select_best_book_match(primary_matches, vol_pref, sem_pref, is_activity)
+        return select_best_book_match(primary_matches, vol_pref, sem_pref, is_activity, start_page=start_page)
     
     # 4. Check aliases in SUBJECT_MAP
     aliases = SUBJECT_MAP.get(subject, [])
     for al in aliases:
         al_matches = [_get_book_fields(b)[0] for b in available_books if al == _get_book_fields(b)[0] or _get_book_fields(b)[0].startswith(al)]
         if al_matches:
-            return select_best_book_match(al_matches, vol_pref, sem_pref, is_activity)
+            return select_best_book_match(al_matches, vol_pref, sem_pref, is_activity, start_page=start_page)
 
     # 5. Final fallback for integrated
     if is_integrated:
