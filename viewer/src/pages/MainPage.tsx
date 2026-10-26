@@ -211,7 +211,12 @@ export default function MainPage() {
                 if (currentBooks.length > 0) setTextbooks(currentBooks);
             }
 
-            const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, currentBooks);
+            const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, currentBooks, {
+                unit: targetItem.unit,
+                rawText: targetItem.raw,
+                topic: targetItem.topic,
+                startPage: targetItem.startPage
+            });
             if (resolved) {
                 showToast(`주학습계획안 반영: ${status.targetDay}요일 ${status.periodName} [${resolved.title} ${targetPage}쪽]으로 이동합니다.`);
                 setTimeout(() => {
@@ -397,7 +402,12 @@ export default function MainPage() {
                             if (!currentBooks || currentBooks.length === 0) {
                                 currentBooks = (await GetTextbooks()) || [];
                             }
-                            const resolved = resolveBookForSubject(foundItem.subject, foundItem.matchedBookId, currentBooks);
+                            const resolved = resolveBookForSubject(foundItem.subject, foundItem.matchedBookId, currentBooks, {
+                                unit: foundItem.unit,
+                                rawText: foundItem.raw,
+                                topic: foundItem.topic,
+                                startPage: foundItem.startPage
+                            });
                             if (resolved) {
                                 setTimeout(() => {
                                     navigate(`/viewer/${encodeURIComponent(resolved.id)}?targetPage=${targetPage}&startAlert=true`);
@@ -721,7 +731,12 @@ export default function MainPage() {
 
     // Quick navigation from weekly plan to book page
     const handleGoToBook = (bookId: string, pageNumber: number, item?: any) => {
-        const resolved = resolveBookForSubject(item?.subject || bookId, item?.matchedBookId || bookId, textbooks);
+        const resolved = resolveBookForSubject(item?.subject || bookId, item?.matchedBookId || bookId, textbooks, {
+            unit: item?.unit,
+            rawText: item?.raw,
+            topic: item?.topic,
+            startPage: item?.startPage || pageNumber
+        });
         if (resolved) {
             const targetId = resolved.id;
             const bookName = resolved.title;

@@ -791,7 +791,12 @@ function WeeklyPlanScheduleModalContent({
                         books = (await GetTextbooks()) || [];
                     } catch (e) { }
                 }
-                const resolved = resolveBookForSubject(newItem.subject, newItem.matchedBookId, books);
+                const resolved = resolveBookForSubject(newItem.subject, newItem.matchedBookId, books, {
+                    unit: newItem.unit,
+                    rawText: newItem.raw,
+                    topic: newItem.topic,
+                    startPage: newItem.startPage
+                });
                 const targetBookId = resolved ? resolved.id : (newItem.matchedBookId || newItem.subject);
                 if (resolved || !onGoToBlank) {
                     onGoToBook(targetBookId, newItem.startPage || 1, newItem);
@@ -832,7 +837,12 @@ function WeeklyPlanScheduleModalContent({
         }
 
         const targetPage = item.startPage || 1;
-        const resolved = resolveBookForSubject(item.subject, item.matchedBookId, books);
+        const resolved = resolveBookForSubject(item.subject, item.matchedBookId, books, {
+            unit: item.unit,
+            rawText: item.raw,
+            topic: item.topic,
+            startPage: item.startPage
+        });
         const targetBookId = resolved ? resolved.id : (item.matchedBookId || item.subject);
 
         if (resolved) {
