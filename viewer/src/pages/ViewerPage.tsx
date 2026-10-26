@@ -388,7 +388,12 @@ export default function ViewerPage() {
             }
 
             const targetPage = targetItem.startPage || 1;
-            const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, books || []);
+            const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, books || [], {
+                unit: targetItem.unit,
+                rawText: targetItem.raw,
+                topic: targetItem.topic,
+                startPage: targetItem.startPage
+            });
 
             if (resolved) {
                 if (resolved.id === bookId) {
@@ -719,7 +724,12 @@ export default function ViewerPage() {
 
             const targetPage = targetItem.startPage || 1;
             const books = (await GetTextbooks()) || [];
-            const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, books);
+            const resolved = resolveBookForSubject(targetItem.subject, targetItem.matchedBookId, books, {
+                unit: targetItem.unit,
+                rawText: targetItem.raw,
+                topic: targetItem.topic,
+                startPage: targetItem.startPage
+            });
 
             if (resolved) {
                 showToast(`주학습계획안 반영: ${targetDay}요일 ${targetItem.period}교시 [${resolved.title} ${targetPage}쪽]으로 이동합니다.`);
@@ -912,7 +922,12 @@ export default function ViewerPage() {
                         } else {
                             const targetPage = planItem.startPage || 1;
                             GetTextbooks().then(books => {
-                                const resolved = resolveBookForSubject(planItem!.subject, planItem!.matchedBookId, books || []);
+                                const resolved = resolveBookForSubject(planItem!.subject, planItem!.matchedBookId, books || [], {
+                                    unit: planItem!.unit,
+                                    rawText: planItem!.raw,
+                                    topic: planItem!.topic,
+                                    startPage: planItem!.startPage
+                                });
                                 if (resolved) {
                                     if (resolved.id === bookId) {
                                         const physical = Math.min(Math.max(1, targetPage + pageOffset), numPages);
@@ -1624,7 +1639,13 @@ export default function ViewerPage() {
         const resolved = resolveBookForSubject(
             itm?.subject || targetBookId,
             itm?.matchedBookId || targetBookId,
-            currentBooks
+            currentBooks,
+            {
+                unit: itm?.unit,
+                rawText: itm?.raw,
+                topic: itm?.topic,
+                startPage: itm?.startPage || targetPrintedPage
+            }
         );
 
         const pageToOpen = targetPrintedPage > 0 ? targetPrintedPage : 1;

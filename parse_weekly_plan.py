@@ -124,78 +124,198 @@ def identify_subject(text):
             return sub
     return ""
 
-def match_book_id(subject, available_books, unit=""):
+def detect_volume_preference(text, start_page=None):
     """
-    Given a parsed subject, available book IDs, and optional unit text,
-    find the best matching book ID.
-    In Korean elementary schools, integrated subjects (바른생활, 슬기로운생활, 즐거운생활)
-    correspond to thematic textbooks named after the unit (e.g. '하루', '학교', '사람들', '탐험').
+    Detect whether text refers to '가' volume or '나' volume of Korean elementary textbooks.
+    Returns: '가', '나', or None
     """
-    if not subject and not unit:
+    if not text:
+        return None
+
+    # 1. Explicit brackets or parentheses: (나), [나], <나>, 〈나〉
+    if re.search(r'[\(\[<〈]\s*나\s*[\)\]>〉]', text):
+        return '나'
+    if re.search(r'[\(\[<〈]\s*가\s*[\)\]>〉]', text):
+        return '가'
+
+    # 2. Specific Korean textbook volume keywords like '국어나', '국어 나', '1-2나', '1-2 나', '나권'
+    if re.search(r'(?:국어|1-[12]|2-[12])\s*[\(\[]?\s*나', text) or re.search(r'나\s*권', text) or '나권' in text:
+        return '나'
+    if re.search(r'(?:국어|1-[12]|2-[12])\s*[\(\[]?\s*가', text) or re.search(r'가\s*권', text) or '가권' in text:
+        return '가'
+
+    # 3. Unit number inspection: Units 6-12 are '나', Units 1-5 are '가'
+    unit_m = re.search(r'(?:^|[^\d])(\d{1,2})\s*[\.\)]|(?:^|[^\d])(\d{1,2})\s*단원', text)
+    if unit_m:
+        u_num = int(unit_m.group(1) or unit_m.group(2))
+        if 6 <= u_num <= 12:
+            return '나'
+        elif 1 <= u_num <= 5:
+            return '가'
+
+    # 4. Page number heuristic: cumulative page numbers >= 140 indicate '나' volume
+    if start_page and start_page >= 140:
+        return '나'
+
+    return None
+
+def detect_semester_preference(text):
+    """
+    Detect semester: '1-1', '1-2', '2-1', '2-2', etc.
+    """
+    if not text:
+        return None
+    m = re.search(r'([1-6]\s*[-_]\s*[12])', text)
+    if m:
+        return re.sub(r'\s+', '', m.group(1)).replace('_', '-')
+    if '2학기' in text:
+        return '-2'
+    if '1학기' in text:
+        return '-1'
+    return None
+
+def select_best_book_match(candidates, vol_pref=None, sem_pref=None, is_activity=False):
+    """
+    Among candidate book IDs, choose the best matching one considering volume ('가'/'나') and semester ('1-1'/'1-2').
+    """
+    if not candidates:
         return ""
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Filter activity vs non-activity
+    filtered = candidates
+    if not is_activity:
+        non_act = [c for c in filtered if '활동' not in c and '익힘' not in c]
+        if non_act:
+            filtered = non_act
+    else:
+        act = [c for c in filtered if '활동' in c or '익힘' in c]
+        if act:
+            filtered = act
+
+    if len(filtered) == 1:
+        return filtered[0]
+
+    # Filter by semester if specified
+    if sem_pref:
+        sem_matches = [c for c in filtered if sem_pref in c]
+        if sem_matches:
+            filtered = sem_matches
+
+    if len(filtered) == 1:
+        return filtered[0]
+
+    # Filter by volume ('가' vs '나')
+    if vol_pref == '나':
+        na_matches = [c for c in filtered if '나' in c and '가' not in c]
+        if na_matches:
+            return na_matches[0]
+        na_ends = [c for c in filtered if re.sub(r'\.pdf$', '', c, flags=re.I).endswith('나')]
+        if na_ends:
+            return na_ends[0]
+    elif vol_pref == '가':
+        ga_matches = [c for c in filtered if '가' in c and '나' not in c]
+        if ga_matches:
+            return ga_matches[0]
+        ga_ends = [c for c in filtered if re.sub(r'\.pdf$', '', c, flags=re.I).endswith('가')]
+        if ga_ends:
+            return ga_ends[0]
+
+    # Date-based fallback: late in semester -> '나'
+    now_m = datetime.datetime.now().month
+    if now_m >= 9 or now_m <= 1:
+        second_sem = [c for c in filtered if '-2' in c or '2학기' in c]
+        if second_sem:
+            if now_m >= 11 or now_m <= 1:
+                na_sub = [c for c in second_sem if '나' in c]
+                if na_sub:
+                    return na_sub[0]
+            ga_sub = [c for c in second_sem if '가' in c]
+            if ga_sub:
+                return ga_sub[0]
+            return second_sem[0]
+
+    return filtered[0]
+
+def _get_book_fields(b):
+    if isinstance(b, dict):
+        return str(b.get('id') or ''), str(b.get('title') or '')
+    s = str(b or '')
+    return s, s
+
+def match_book_id(subject, available_books, unit="", raw_text="", topic="", start_page=None):
+    """
+    Given a parsed subject, available book IDs, and context (unit, raw, topic, page),
+    find the best matching book ID with strict volume ('가'/'나') and semester ('1-1'/'1-2') distinction.
+    """
+    if not subject and not unit and not raw_text:
+        return ""
+
+    combined_context = f"{unit} {raw_text} {topic} {subject}"
+    vol_pref = detect_volume_preference(combined_context, start_page)
+    sem_pref = detect_semester_preference(combined_context)
+    is_activity = ('활동' in (subject or '') or '활동' in combined_context) and ('국어' in (subject or '') or '수학' in (subject or ''))
 
     is_integrated = any(k in (subject or "") for k in ['바른생활', '슬기로운생활', '즐거운생활', '바생', '슬생', '즐생', '통합'])
 
-    # 1. If unit is provided, check if unit contains a theme/book title
-    if unit:
-        clean_u = re.sub(r'^\d+\s*[\.\)]\s*', '', unit)
+    # 1. If unit or topic is provided, check if it contains a theme/book title
+    if unit or topic:
+        check_text = f"{unit} {topic}"
+        clean_u = re.sub(r'^\d+\s*[\.\)]\s*', '', check_text)
         clean_u = re.sub(r'\(\s*\d+\s*/\s*\d+\s*(?:차시)?\s*\)', '', clean_u).strip()
         
-        # Check if clean_u or any keyword in unit matches available_books
+        matched_candidates = []
         for b in available_books:
-            bid = b.get('id', '')
-            btitle = b.get('title', '')
+            bid = _get_book_fields(b)[0]
+            btitle = _get_book_fields(b)[1]
             for target in [bid, btitle]:
-                target_clean = re.sub(r'\d+-\d+.*$', '', target)
-                if (target_clean and target_clean in unit) or (target and target in unit):
-                    return bid
+                if not target:
+                    continue
+                if target in check_text or target in clean_u:
+                    matched_candidates.append(bid)
+                    break
+        if matched_candidates:
+            return select_best_book_match(matched_candidates, vol_pref, sem_pref, is_activity)
 
         if is_integrated:
             # Check for known integrated curriculum themes: '하루', '학교', '사람들', '탐험', '봄', '여름', '가을', '겨울', '세상'
             for theme in ['하루', '학교', '사람들', '탐험', '봄', '여름', '가을', '겨울', '세상']:
-                if theme in unit:
-                    for b in available_books:
-                        bid = b.get('id', '')
-                        if theme in bid:
-                            return bid
+                if theme in check_text:
+                    theme_candidates = [_get_book_fields(b)[0] for b in available_books if theme in _get_book_fields(b)[0]]
+                    if theme_candidates:
+                        return select_best_book_match(theme_candidates, vol_pref, sem_pref)
                     return theme
 
     # 2. If subject is integrated, default to '하루' if mentioned or as primary fallback
     if is_integrated:
-        if ('하루' in (unit or "")) or ('하루' in (subject or "")) or not unit:
-            for b in available_books:
-                bid = b.get('id', '')
-                if '하루' in bid:
-                    return bid
+        if ('하루' in combined_context) or not unit:
+            haru_candidates = [_get_book_fields(b)[0] for b in available_books if '하루' in _get_book_fields(b)[0]]
+            if haru_candidates:
+                return select_best_book_match(haru_candidates, vol_pref, sem_pref)
             return '하루'
 
     # 3. Exact match or starts with in available_books
     primary_matches = []
     for b in available_books:
-        bid = b.get('id', '')
-        if subject == bid or bid.startswith(subject):
-            if '활동' not in subject and '익힘' not in subject and ('활동' in bid or '익힘' in bid):
-                continue
+        bid = _get_book_fields(b)[0]
+        if subject == bid or bid.startswith(subject) or (subject and subject in bid):
             primary_matches.append(bid)
     if primary_matches:
-        return primary_matches[0]
+        return select_best_book_match(primary_matches, vol_pref, sem_pref, is_activity)
     
     # 4. Check aliases in SUBJECT_MAP
     aliases = SUBJECT_MAP.get(subject, [])
     for al in aliases:
-        for b in available_books:
-            bid = b.get('id', '')
-            if al == bid or bid.startswith(al):
-                if '활동' not in subject and '익힘' not in subject and ('활동' in bid or '익힘' in bid):
-                    continue
-                return bid
+        al_matches = [_get_book_fields(b)[0] for b in available_books if al == _get_book_fields(b)[0] or _get_book_fields(b)[0].startswith(al)]
+        if al_matches:
+            return select_best_book_match(al_matches, vol_pref, sem_pref, is_activity)
 
     # 5. Final fallback for integrated
     if is_integrated:
-        for b in available_books:
-            bid = b.get('id', '')
-            if '하루' in bid:
-                return bid
+        haru_candidates = [_get_book_fields(b)[0] for b in available_books if '하루' in _get_book_fields(b)[0]]
+        if haru_candidates:
+            return select_best_book_match(haru_candidates, vol_pref, sem_pref)
         return '하루'
                 
     return ""
@@ -226,7 +346,7 @@ def resolve_integrated_subject(subject, matched_book_id="", raw_text="", topic="
         for theme in themes:
             if theme in combined:
                 for b in available_books:
-                    bid = b.get('id', '')
+                    bid = _get_book_fields(b)[0]
                     if theme in bid:
                         return re.sub(r'\.pdf$', '', bid, flags=re.IGNORECASE).strip()
                 return theme
@@ -534,7 +654,7 @@ def process_tables(tables, doc_title):
 
                         subject = identify_subject(subj_text)
                         page_str, sp, ep = extract_page_info(page_text)
-                        mbid = match_book_id(subject, available_books, unit=unit_text)
+                        mbid = match_book_id(subject, available_books, unit=unit_text, raw_text=f"{subj_text} {unit_text} {topic_text} {page_text}", topic=topic_text, start_page=sp)
 
                         clean_topic = topic_text if topic_text else unit_text
                         if not clean_topic:
@@ -588,7 +708,7 @@ def process_tables(tables, doc_title):
                             topic = lines[-1] if len(lines) > 1 else lines[0]
 
                         if subject or page_str or topic:
-                            mbid = match_book_id(subject, available_books, unit=cell_text)
+                            mbid = match_book_id(subject, available_books, unit=cell_text, raw_text=cell_text, topic=topic, start_page=sp)
                             item = {
                                 "period": current_period,
                                 "subject": subject if subject else "학습",
@@ -710,7 +830,7 @@ def parse_period_blocks(paragraphs, available_books):
                 pg_info = pages[d_idx] if d_idx < len(pages) else ("", None, None, "")
                 page_str, sp, ep = pg_info[0], pg_info[1], pg_info[2]
                 topic = topics[d_idx] if d_idx < len(topics) else ""
-                mbid = match_book_id(subj, available_books)
+                mbid = match_book_id(subj, available_books, unit=topic, raw_text=f"{subj} {topic} {page_str}", topic=topic, start_page=sp)
                 
                 schedule[day].append({
                     "period": period_num,
@@ -728,7 +848,7 @@ def parse_period_blocks(paragraphs, available_books):
                 day = DAY_NAMES[d_idx]
                 subj = identify_subject(p)
                 page_str, sp, ep = extract_page_info(p)
-                mbid = match_book_id(subj, available_books)
+                mbid = match_book_id(subj, available_books, unit=topic, raw_text=f"{subj} {topic} {page_str}", topic=topic, start_page=sp)
                 schedule[day].append({
                     "period": period_num,
                     "subject": subj if subj else "학습",
@@ -779,7 +899,7 @@ def process_paragraphs(paragraphs, doc_title):
             subject = identify_subject(para)
             page_str, sp, ep = extract_page_info(para)
             if subject or page_str:
-                mbid = match_book_id(subject, available_books)
+                mbid = match_book_id(subject, available_books, raw_text=para, topic=para, start_page=sp)
                 schedule[current_day].append({
                     "period": current_period,
                     "subject": subject if subject else "학습",
@@ -1027,7 +1147,7 @@ def parse_hwpml(filepath):
                             p_raw = page_cells[d_idx]
 
                         page_str, sp, ep = extract_page_info(p_raw)
-                        mbid = match_book_id(s, available_books, unit=u)
+                        mbid = match_book_id(s, available_books, unit=u, raw_text=f"{s} {u} {t} {p_raw}", topic=t, start_page=sp)
 
                         clean_topic = t if t else u
                         if not clean_topic:
@@ -1057,7 +1177,7 @@ def parse_hwpml(filepath):
                             continue
                         s = identify_subject(cell_txt)
                         page_str, sp, ep = extract_page_info(cell_txt)
-                        mbid = match_book_id(s, available_books)
+                        mbid = match_book_id(s, available_books, raw_text=cell_txt, topic=cell_txt, start_page=sp)
                         schedule[day].append({
                             "period": period_num,
                             "subject": s if s else "학습",
