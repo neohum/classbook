@@ -34,7 +34,7 @@ var embeddedWeeklyPlanScript []byte
 //go:embed convert_pdf.py
 var embeddedConvertPdfScript []byte
 
-const AppVersion = "1.2.31"
+const AppVersion = "1.2.32"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const R2VersionUrl = "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/version.json"
@@ -432,11 +432,13 @@ func (a *App) Greet(name string) string {
 
 // Textbook represents a book available in the viewer
 type Textbook struct {
-	ID         string `json:"id"`
-	Title      string `json:"title"`
-	Color      string `json:"color"`
-	NumPages   int    `json:"numPages"`
-	PageOffset int    `json:"pageOffset"`
+	ID               string `json:"id"`
+	Title            string `json:"title"`
+	Color            string `json:"color"`
+	NumPages         int    `json:"numPages"`
+	PageOffset       int    `json:"pageOffset"`
+	StartPrintedPage int    `json:"startPrintedPage"`
+	EndPrintedPage   int    `json:"endPrintedPage"`
 }
 
 var colors = []string{"bg-orange-500", "bg-orange-400", "bg-blue-500", "bg-blue-400", "bg-green-500", "bg-rose-500", "bg-purple-500"}
@@ -472,6 +474,8 @@ func (a *App) GetTextbooks() ([]Textbook, error) {
 
 			numPages := 0
 			pageOffset := 0
+			startPrintedPage := 1
+			endPrintedPage := 0
 
 			metaPath := filepath.Join(imagesDir, title, "metadata.json")
 			if metaBytes, err := os.ReadFile(metaPath); err == nil {
@@ -479,15 +483,31 @@ func (a *App) GetTextbooks() ([]Textbook, error) {
 				if json.Unmarshal(metaBytes, &meta) == nil {
 					numPages = meta.NumPages
 					pageOffset = meta.PageOffset
+					startPrintedPage = meta.StartPrintedPage
+					endPrintedPage = meta.EndPrintedPage
 				}
 			}
 
+			// Automatic calculation if start/end printed page not explicitly specified
+			if startPrintedPage <= 0 {
+				if pageOffset < 0 {
+					startPrintedPage = 1 - pageOffset
+				} else {
+					startPrintedPage = 1
+				}
+			}
+			if endPrintedPage <= 0 && numPages > 0 {
+				endPrintedPage = numPages - pageOffset
+			}
+
 			books = append(books, Textbook{
-				ID:         title,
-				Title:      title,
-				Color:      color,
-				NumPages:   numPages,
-				PageOffset: pageOffset,
+				ID:               title,
+				Title:            title,
+				Color:            color,
+				NumPages:         numPages,
+				PageOffset:       pageOffset,
+				StartPrintedPage: startPrintedPage,
+				EndPrintedPage:   endPrintedPage,
 			})
 		}
 	}
@@ -495,8 +515,10 @@ func (a *App) GetTextbooks() ([]Textbook, error) {
 }
 
 type Metadata struct {
-	NumPages   int `json:"numPages"`
-	PageOffset int `json:"pageOffset"`
+	NumPages         int `json:"numPages"`
+	PageOffset       int `json:"pageOffset"`
+	StartPrintedPage int `json:"startPrintedPage,omitempty"`
+	EndPrintedPage   int `json:"endPrintedPage,omitempty"`
 }
 
 // SelectPdfDialog opens a file dialog to pick a PDF. It returns the absolute path.
@@ -537,6 +559,16 @@ func (a *App) EnsureBookDir(title string, numPages int) error {
 
 // EnsureBookDirWithOffset creates the book directory and writes metadata with pageOffset
 func (a *App) EnsureBookDirWithOffset(title string, numPages int, pageOffset int) error {
+	startPrintedPage := 1
+	if pageOffset < 0 {
+		startPrintedPage = 1 - pageOffset
+	}
+	endPrintedPage := numPages - pageOffset
+	return a.EnsureBookDirWithRange(title, numPages, pageOffset, startPrintedPage, endPrintedPage)
+}
+
+// EnsureBookDirWithRange creates the book directory and writes metadata with verified page offset and printed range
+func (a *App) EnsureBookDirWithRange(title string, numPages int, pageOffset int, startPrintedPage int, endPrintedPage int) error {
 	imagesDir := getImagesDir()
 	bookDir := filepath.Join(imagesDir, title)
 	if err := os.MkdirAll(bookDir, 0755); err != nil {
@@ -544,14 +576,16 @@ func (a *App) EnsureBookDirWithOffset(title string, numPages int, pageOffset int
 	}
 
 	meta := Metadata{
-		NumPages:   numPages,
-		PageOffset: pageOffset,
+		NumPages:         numPages,
+		PageOffset:       pageOffset,
+		StartPrintedPage: startPrintedPage,
+		EndPrintedPage:   endPrintedPage,
 	}
 	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
 	return os.WriteFile(filepath.Join(bookDir, "metadata.json"), metaBytes, 0644)
 }
 
-// UpdateBookOffset updates only the pageOffset in the metadata.json of the book
+// UpdateBookOffset updates only the pageOffset and printed page range in the metadata.json of the book
 func (a *App) UpdateBookOffset(title string, pageOffset int) error {
 	imagesDir := getImagesDir()
 	metaPath := filepath.Join(imagesDir, title, "metadata.json")
@@ -560,6 +594,14 @@ func (a *App) UpdateBookOffset(title string, pageOffset int) error {
 		_ = json.Unmarshal(data, &meta)
 	}
 	meta.PageOffset = pageOffset
+	if meta.NumPages > 0 {
+		if pageOffset < 0 {
+			meta.StartPrintedPage = 1 - pageOffset
+		} else {
+			meta.StartPrintedPage = 1
+		}
+		meta.EndPrintedPage = meta.NumPages - pageOffset
+	}
 
 	metaBytes, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {

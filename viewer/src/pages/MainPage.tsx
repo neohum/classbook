@@ -17,7 +17,7 @@ import { main } from '../../wailsjs/go/models';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorkerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
-import { detectPageNumberFromText, detectPageNumberFromCanvas } from '../utils/ocrOffsetDetector';
+import { detectPageNumberFromText, detectPageNumberFromCanvas, computeConsensusOffset } from '../utils/ocrOffsetDetector';
 import PageOffsetAdjustModal from '../components/PageOffsetAdjustModal';
 import AddBookModal from '../components/AddBookModal';
 import ConversionProgressModal from '../components/ConversionProgressModal';
@@ -588,7 +588,8 @@ export default function MainPage() {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d', { alpha: false });
 
-        let detectedOffset: number | null = null;
+        const offsetSamples: { physicalPage: number; printedPage: number }[] = [];
+        let currentOffsetHint: number | null = null;
 
         for (let j = 1; j <= numPages; j++) {
             const page = await pdf.getPage(j);
@@ -610,16 +611,16 @@ export default function MainPage() {
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
                 await SavePageImage(title, j, dataUrl);
 
-                if (detectedOffset === null && j >= 4 && j <= 12) {
-                    const printedFromText = await detectPageNumberFromText(page, viewport);
-                    if (printedFromText !== null && printedFromText > 0) {
-                        detectedOffset = j - printedFromText;
-                    } else {
+                // Sample corner page numbers from pages 4 to 16
+                if (j >= 4 && j <= 16) {
+                    let printed = await detectPageNumberFromText(page, viewport);
+                    if (printed === null || printed <= 0) {
                         const isEven = j % 2 === 0;
-                        const printedFromOcr = await detectPageNumberFromCanvas(canvas, isEven);
-                        if (printedFromOcr !== null && printedFromOcr > 0) {
-                            detectedOffset = j - printedFromOcr;
-                        }
+                        printed = await detectPageNumberFromCanvas(canvas, isEven);
+                    }
+                    if (printed !== null && printed > 0) {
+                        offsetSamples.push({ physicalPage: j, printedPage: printed });
+                        currentOffsetHint = j - printed;
                     }
                 }
             }
@@ -634,12 +635,15 @@ export default function MainPage() {
                 total: numPages,
                 percent: pct,
                 title,
-                statusText: detectedOffset !== null ? `변환 중 (${j}/${numPages}쪽, 오프셋 감지: ${detectedOffset})` : `변환 중 (${j}/${numPages}쪽)`,
-                detectedOffset,
+                statusText: currentOffsetHint !== null
+                    ? `변환 및 쪽수 검사 중 (${j}/${numPages}쪽, 오프셋: ${currentOffsetHint})`
+                    : `변환 중 (${j}/${numPages}쪽)`,
+                detectedOffset: currentOffsetHint,
             }));
         }
 
-        const finalOffset = detectedOffset !== null ? detectedOffset : 0;
+        const inspection = computeConsensusOffset(offsetSamples, numPages, title);
+        const finalOffset = inspection.offset;
         await EnsureBookDirWithOffset(title, numPages, finalOffset);
 
         const updatedBooks = await GetTextbooks();
@@ -650,7 +654,7 @@ export default function MainPage() {
             title,
             numPages,
             initialOffset: finalOffset,
-            detectedOffset,
+            detectedOffset: finalOffset,
         };
     };
 
