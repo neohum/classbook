@@ -27,16 +27,23 @@ SUBJECT_MAP = {
     '학교': ['학교', '학교1-1'],
     '사람들': ['사람들', '사람들1-1'],
     '탐험': ['탐험', '탐험1-1'],
+    '약속': ['약속', '약속1-1', '약속1-2', '약속2-1', '약속2-2'],
     '봄': ['봄', '봄1-1', '학교1-1'],
     '여름': ['여름', '여름1-1', '사람들1-1'],
     '가을': ['가을', '가을1-1', '탐험1-1'],
     '겨울': ['겨울', '겨울1-1'],
-    '바른생활': ['하루', '하루1-1', '하루1-2', '학교', '학교1-1', '바른생활'],
-    '슬기로운생활': ['하루', '하루1-1', '하루1-2', '사람들', '사람들1-1', '슬기로운생활'],
-    '즐거운생활': ['하루', '하루1-1', '하루1-2', '탐험', '탐험1-1', '즐거운생활'],
-    '바생': ['하루', '하루1-1', '하루1-2', '학교', '학교1-1', '바른생활'],
-    '슬생': ['하루', '하루1-1', '하루1-2', '사람들', '사람들1-1', '슬기로운생활'],
-    '즐생': ['하루', '하루1-1', '하루1-2', '탐험', '탐험1-1', '즐거운생활'],
+    '상상': ['상상', '상상1-1'],
+    '이야기': ['이야기', '이야기1-1'],
+    '마을': ['마을', '마을1-1'],
+    '이웃': ['이웃', '이웃1-1'],
+    '우리나라': ['우리나라', '우리나라1-1'],
+    '세계': ['세계', '세계1-1'],
+    '바른생활': ['약속', '하루', '하루1-1', '하루1-2', '학교', '학교1-1', '상상', '바른생활'],
+    '슬기로운생활': ['약속', '하루', '하루1-1', '하루1-2', '사람들', '사람들1-1', '이야기', '슬기로운생활'],
+    '즐거운생활': ['약속', '하루', '하루1-1', '하루1-2', '탐험', '탐험1-1', '가을', '겨울', '즐거운생활'],
+    '바생': ['약속', '하루', '하루1-1', '하루1-2', '학교', '학교1-1', '상상', '바른생활'],
+    '슬생': ['약속', '하루', '하루1-1', '하루1-2', '사람들', '사람들1-1', '이야기', '슬기로운생활'],
+    '즐생': ['약속', '하루', '하루1-1', '하루1-2', '탐험', '탐험1-1', '가을', '겨울', '즐거운생활'],
     '도덕': ['도덕'],
     '사회': ['사회'],
     '과학': ['과학'],
@@ -109,19 +116,28 @@ def extract_page_info(text):
 
 def identify_subject(text):
     """Detect subject from cell text"""
-    sorted_subjects = sorted(SUBJECT_MAP.items(), key=lambda x: max(len(x[0]), max((len(a) for a in x[1]), default=0)), reverse=True)
-    
     clean = re.sub(r'[\s\(\)\[\]0-9~.\-–쪽]', '', text)
-    for sub, aliases in sorted_subjects:
+
+    # 1. Direct subject key match first (prioritizes specific subject/theme like '약속', '국어', '수학', '즐생' etc.)
+    sorted_keys = sorted(SUBJECT_MAP.keys(), key=len, reverse=True)
+    for sub in sorted_keys:
         if sub in clean:
             return sub
+
+    # 2. General curriculum keyword match
+    for sub in sorted(['국어활동', '수학익힘', '바른생활', '슬기로운생활', '즐거운생활', '국어', '수학', '바생', '슬생', '즐생', '하루', '학교', '사람들', '탐험', '약속', '봄', '여름', '가을', '겨울', '세상', '마을', '이웃', '우리나라', '세계', '상상', '이야기', '도덕', '사회', '과학', '체육', '음악', '미술', '영어', '안전', '창체'], key=len, reverse=True):
+        if sub in text:
+            return sub
+
+    # 3. Aliases match (excluding integrated subject aliases which may contain independent theme names)
+    sorted_subjects = sorted(SUBJECT_MAP.items(), key=lambda x: max(len(x[0]), max((len(a) for a in x[1]), default=0)), reverse=True)
+    for sub, aliases in sorted_subjects:
+        if sub in ['바른생활', '슬기로운생활', '즐거운생활', '바생', '슬생', '즐생']:
+            continue
         for al in aliases:
             if al in clean:
                 return sub
                 
-    for sub in sorted(['국어활동', '수학익힘', '바른생활', '슬기로운생활', '즐거운생활', '국어', '수학', '바생', '슬생', '즐생', '하루', '학교', '사람들', '탐험', '봄', '여름', '가을', '겨울', '도덕', '사회', '과학', '체육', '음악', '미술', '영어', '안전', '창체'], key=len, reverse=True):
-        if sub in text:
-            return sub
     return ""
 
 def detect_volume_preference(text, start_page=None):
@@ -255,6 +271,7 @@ def match_book_id(subject, available_books, unit="", raw_text="", topic="", star
     is_activity = ('활동' in (subject or '') or '활동' in combined_context) and ('국어' in (subject or '') or '수학' in (subject or ''))
 
     is_integrated = any(k in (subject or "") for k in ['바른생활', '슬기로운생활', '즐거운생활', '바생', '슬생', '즐생', '통합'])
+    INTEGRATED_THEMES = ['학교', '사람들', '탐험', '약속', '봄', '여름', '가을', '겨울', '세상', '마을', '이웃', '우리나라', '세계', '상상', '이야기', '하루']
 
     # 1. If unit or topic is provided, check if it contains a theme/book title
     if unit or topic:
@@ -276,17 +293,23 @@ def match_book_id(subject, available_books, unit="", raw_text="", topic="", star
             return select_best_book_match(matched_candidates, vol_pref, sem_pref, is_activity, start_page=start_page)
 
         if is_integrated:
-            # Check for known integrated curriculum themes: '하루', '학교', '사람들', '탐험', '봄', '여름', '가을', '겨울', '세상'
-            for theme in ['하루', '학교', '사람들', '탐험', '봄', '여름', '가을', '겨울', '세상']:
+            # Check for known integrated curriculum themes (e.g. 약속, 탐험, 하루 등)
+            for theme in INTEGRATED_THEMES:
                 if theme in check_text:
                     theme_candidates = [_get_book_fields(b)[0] for b in available_books if theme in _get_book_fields(b)[0]]
                     if theme_candidates:
                         return select_best_book_match(theme_candidates, vol_pref, sem_pref)
                     return theme
 
-    # 2. If subject is integrated, default to '하루' if mentioned or as primary fallback
+    # 2. If subject is integrated, check combined_context for any theme first before falling back
     if is_integrated:
-        if ('하루' in combined_context) or not unit:
+        for theme in INTEGRATED_THEMES:
+            if theme in combined_context:
+                theme_candidates = [_get_book_fields(b)[0] for b in available_books if theme in _get_book_fields(b)[0]]
+                if theme_candidates:
+                    return select_best_book_match(theme_candidates, vol_pref, sem_pref)
+                return theme
+        if not unit:
             haru_candidates = [_get_book_fields(b)[0] for b in available_books if '하루' in _get_book_fields(b)[0]]
             if haru_candidates:
                 return select_best_book_match(haru_candidates, vol_pref, sem_pref)
@@ -310,6 +333,12 @@ def match_book_id(subject, available_books, unit="", raw_text="", topic="", star
 
     # 5. Final fallback for integrated
     if is_integrated:
+        for theme in INTEGRATED_THEMES:
+            if theme in combined_context:
+                theme_candidates = [_get_book_fields(b)[0] for b in available_books if theme in _get_book_fields(b)[0]]
+                if theme_candidates:
+                    return select_best_book_match(theme_candidates, vol_pref, sem_pref)
+                return theme
         haru_candidates = [_get_book_fields(b)[0] for b in available_books if '하루' in _get_book_fields(b)[0]]
         if haru_candidates:
             return select_best_book_match(haru_candidates, vol_pref, sem_pref)
@@ -320,7 +349,7 @@ def match_book_id(subject, available_books, unit="", raw_text="", topic="", star
 def resolve_integrated_subject(subject, matched_book_id="", raw_text="", topic="", available_books=None):
     """
     For Korean elementary 1-2 grade integrated subjects (바른생활, 슬기로운생활, 즐거운생활),
-    substitute the subject with the actual textbook file/book name (e.g. '학교1-1', '사람들1-1', '탐험1-1', '하루')
+    substitute the subject with the actual textbook file/book name (e.g. '학교1-1', '사람들1-1', '탐험1-1', '하루', '약속')
     instead of the generic subject name.
     """
     if not subject:
@@ -330,30 +359,26 @@ def resolve_integrated_subject(subject, matched_book_id="", raw_text="", topic="
     if not is_integrated:
         return subject
 
-    # 1. If matched_book_id exists and not integrated generic name
+    themes = ['학교', '사람들', '탐험', '약속', '봄', '여름', '가을', '겨울', '세상', '마을', '이웃', '우리나라', '세계', '상상', '이야기', '하루']
+    combined = f"{raw_text} {topic}"
+
+    # 1. If text explicitly contains an integrated theme (like '약속'), prioritize that theme over default book IDs
+    for theme in themes:
+        if theme in combined:
+            if available_books:
+                for b in available_books:
+                    bid = _get_book_fields(b)[0]
+                    if theme in bid:
+                        return re.sub(r'\.pdf$', '', bid, flags=re.IGNORECASE).strip()
+            return theme
+
+    # 2. If matched_book_id exists and not integrated generic name
     if matched_book_id and matched_book_id != 'blank':
         clean_bid = re.sub(r'\.pdf$', '', matched_book_id, flags=re.IGNORECASE).strip()
         if not any(k in clean_bid for k in ['바른생활', '슬기로운생활', '즐거운생활', '바생', '슬생', '즐생', '통합']):
             return clean_bid
 
-    # 2. Check available books for matching integrated themes
-    themes = ['학교', '사람들', '탐험', '하루', '봄', '여름', '가을', '겨울', '세상', '마을', '이웃', '우리나라', '세계']
-    combined = f"{raw_text} {topic}"
-    if available_books:
-        for theme in themes:
-            if theme in combined:
-                for b in available_books:
-                    bid = _get_book_fields(b)[0]
-                    if theme in bid:
-                        return re.sub(r'\.pdf$', '', bid, flags=re.IGNORECASE).strip()
-                return theme
-
-    # 3. If theme exists in text
-    for theme in themes:
-        if theme in combined:
-            return theme
-
-    # 4. Fallback to clean matched_book_id if available
+    # 3. Fallback to clean matched_book_id if available
     if matched_book_id and matched_book_id != 'blank':
         return re.sub(r'\.pdf$', '', matched_book_id, flags=re.IGNORECASE).strip()
 

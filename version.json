@@ -1,11 +1,11 @@
 {
-  "version": "1.2.32",
-  "releaseDate": "2026-10-26",
-  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.32/classbook-setup-v1.2.32.exe",
-  "installerName": "classbook-setup-v1.2.32.exe",
-  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.32.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261026%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261026T003829Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8c6357df45e7098a5f39f0f42b2a693ac2073c2ca16ade6643fc091e1b3c7242",
-  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.32.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261026%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261026T003828Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d890d31d8314f19f8d5d55e4aac2cb4b4c93344f9355d1c2a97ebea72721dd95",
-  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.32.exe",
-  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.32.exe",
-  "notes": "국어 1-2 가/나 권 인쇄 쪽수 범위 기반 자동 선택 및 페이지 검사 강화, 불필요 툴바/플로팅 버튼 삭제 (v1.2.32)"
+  "version": "1.2.33",
+  "releaseDate": "2026-10-27",
+  "downloadUrl": "https://github.com/neohum/classbook/releases/download/v1.2.33/classbook-setup-v1.2.33.exe",
+  "installerName": "classbook-setup-v1.2.33.exe",
+  "r2PresignedUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.33.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261027%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261027T031326Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=712f471690e10dbabca7ad00bb95f881ba162f5d54b47cb1d75104b6c85283bd",
+  "r2PresignedUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.33.exe?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=663da62d1f4b2d390335dbdd69c1ef57%2F20261027%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261027T031325Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=116c1feb91a62f9589814693eed2637004fc1bf7aa546859024eda310163e98b",
+  "r2DirectUrl": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/classbook/classbook-setup-v1.2.33.exe",
+  "r2DirectUrlEdulinker": "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/classbook-setup-v1.2.33.exe",
+  "notes": "주간학습 계획안 통합교과 테마(약속 등) 자동 식별 및 시간표 표기 개선 (v1.2.33)"
 }

@@ -252,26 +252,34 @@ export function resolveBookForSubject(
         '수학': ['수학', '수익', '수학익힘'],
         '수학익힘': ['수학익힘', '수익', '수학'],
         '수익': ['수학익힘', '수학'],
-        '바른생활': ['하루', '바생', '바른생활', '학교', '봄', '상상'],
-        '슬기로운생활': ['하루', '슬생', '슬기로운생활', '사람들', '여름', '가을', '이야기'],
-        '즐거운생활': ['하루', '즐생', '즐거운생활', '탐험', '가을', '겨울', '약속'],
-        '바생': ['하루', '바른생활', '학교', '봄', '상상'],
-        '슬생': ['하루', '슬기로운생활', '사람들', '여름', '가을', '이야기'],
-        '즐생': ['하루', '즐거운생활', '탐험', '가을', '겨울', '약속'],
+        '바른생활': ['약속', '하루', '바생', '바른생활', '학교', '봄', '상상'],
+        '슬기로운생활': ['약속', '하루', '슬생', '슬기로운생활', '사람들', '여름', '가을', '이야기'],
+        '즐거운생활': ['약속', '하루', '즐생', '즐거운생활', '탐험', '가을', '겨울'],
+        '바생': ['약속', '하루', '바른생활', '학교', '봄', '상상'],
+        '슬생': ['약속', '하루', '슬기로운생활', '사람들', '여름', '가을', '이야기'],
+        '즐생': ['약속', '하루', '즐거운생활', '탐험', '가을', '겨울'],
         '봄': ['봄', '학교', '바른생활', '하루'],
         '여름': ['여름', '사람들', '슬기로운생활', '하루'],
         '가을': ['가을', '탐험', '즐거운생활', '하루'],
         '겨울': ['겨울', '탐험', '하루'],
         '상상': ['상상', '바른생활', '하루'],
         '이야기': ['이야기', '슬기로운생활', '하루'],
-        '약속': ['약속', '즐거운생활', '하루'],
+        '약속': ['약속', '즐거운생활', '바른생활', '슬기로운생활', '하루'],
         '학교': ['학교', '봄', '바른생활', '하루'],
         '사람들': ['사람들', '여름', '슬기로운생활', '하루'],
         '탐험': ['탐험', '가을', '즐거운생활', '하루'],
         '하루': ['하루', '바른생활', '슬기로운생활', '즐거운생활', '학교', '봄'],
     };
 
-    const related = aliases[cleanSubject] || [];
+    let related = aliases[cleanSubject] || [];
+    const themes = ['학교', '사람들', '탐험', '약속', '봄', '여름', '가을', '겨울', '세상', '마을', '이웃', '우리나라', '세계', '상상', '이야기', '하루'];
+    for (const th of themes) {
+        if (combinedContext.includes(th)) {
+            related = [th, ...related.filter(r => r !== th)];
+            break;
+        }
+    }
+
     const aliasMatches: BookInfo[] = [];
     for (const rel of related) {
         const found = availableBooks.filter(b => b.title.includes(rel) || b.id.includes(rel));
@@ -322,6 +330,20 @@ export function getDisplaySubjectName(
         return rawSubj;
     }
 
+    // 0. If rawText or topicText explicitly specifies a theme (e.g. '약속'),
+    // prioritize that theme over a default/fallback matchedBookId (such as '하루')
+    const combined = `${rawText || ''} ${topicText || ''}`;
+    const themes = ['학교', '사람들', '탐험', '약속', '봄', '여름', '가을', '겨울', '세상', '마을', '이웃', '우리나라', '세계', '상상', '이야기', '하루'];
+    for (const theme of themes) {
+        if (combined.includes(theme)) {
+            const matchInBooks = availableBooks.find(b => b.id.includes(theme) || b.title.includes(theme));
+            if (matchInBooks) {
+                return matchInBooks.id.replace(/\.pdf$/i, '').trim();
+            }
+            return theme;
+        }
+    }
+
     // 1. If matchedBookId is already available and not 'blank', use it!
     if (matchedBookId && matchedBookId !== 'blank') {
         const cleanBookId = matchedBookId.replace(/\.pdf$/i, '').trim();
@@ -338,20 +360,6 @@ export function getDisplaySubjectName(
         });
         if (resolved && !isIntegratedSubject(resolved.id)) {
             return resolved.id.replace(/\.pdf$/i, '').trim();
-        }
-    }
-
-    // 3. Scan rawText and topicText for integrated theme textbook names
-    // 1-2 grade curriculum themes: 학교, 사람들, 탐험, 하루, 봄, 여름, 가을, 겨울, 세상, 마을, 이웃, 우리나라, 세계, 상상, 이야기, 약속
-    const combined = `${rawText || ''} ${topicText || ''}`;
-    const themes = ['학교', '사람들', '탐험', '하루', '봄', '여름', '가을', '겨울', '세상', '마을', '이웃', '우리나라', '세계', '상상', '이야기', '약속'];
-    for (const theme of themes) {
-        if (combined.includes(theme)) {
-            const matchInBooks = availableBooks.find(b => b.id.includes(theme) || b.title.includes(theme));
-            if (matchInBooks) {
-                return matchInBooks.id.replace(/\.pdf$/i, '').trim();
-            }
-            return theme;
         }
     }
 

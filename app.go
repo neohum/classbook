@@ -34,7 +34,7 @@ var embeddedWeeklyPlanScript []byte
 //go:embed convert_pdf.py
 var embeddedConvertPdfScript []byte
 
-const AppVersion = "1.2.32"
+const AppVersion = "1.2.33"
 const GitHubRawVersionUrl = "https://raw.githubusercontent.com/neohum/classbook/main/version.json"
 const GitHubReleaseApiUrl = "https://api.github.com/repos/neohum/classbook/releases/latest"
 const R2VersionUrl = "https://9d5d05a9b5b1b7fde0163c4d83849cab.r2.cloudflarestorage.com/edulinkermessenger/exports/classbook/version.json"
